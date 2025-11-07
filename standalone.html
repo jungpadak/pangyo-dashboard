@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Butfit 판교벤처타운 대시보드</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Recharts CDN -->
+  <script src="https://unpkg.com/recharts@2.10.3/dist/Recharts.js"></script>
+
+  <!-- Babel Standalone for JSX transformation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #root {
+      width: 100%;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+    const {
+      ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid,
+      Tooltip, Legend, ResponsiveContainer, LineChart
+    } = Recharts;
+
+    // Lucide React 아이콘 대체 (SVG 아이콘)
+    const Download = ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+    );
+
+    const ChevronDown = ({ size = 16 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    );
+
+    const ChevronRight = ({ size = 16 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    );
+
+    const TrendingUp = ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+        <polyline points="17 6 23 6 23 12"></polyline>
+      </svg>
+    );
+
+    const X = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    );
+
+    // 더미 데이터 - 전체 기간으로 확장
+    const rawData = [
+      {month: '2023-11', company: '위메이드', type: '기존_입주사_위메이드', members: 248, revenue: 24488656},
+      {month: '2023-11', company: '크래프톤', type: '기존_입주사_위메이드외', members: 158, revenue: 14864628},
+      {month: '2023-11', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 131, revenue: 12939851},
+      {month: '2023-11', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 171, revenue: 17176820},
+      {month: '2023-11', company: '넷마블', type: '기존_입주사_위메이드외', members: 99, revenue: 9802468},
+      {month: '2023-11', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 123, revenue: 12318133},
+      {month: '2023-11', company: '카카오게임즈', type: '기존_비입주사', members: 69, revenue: 6605813},
+      {month: '2023-11', company: '컴투스', type: '기존_비입주사', members: 54, revenue: 5381677},
+      {month: '2023-11', company: '펄어비스', type: '기존_비입주사', members: 44, revenue: 4353830},
+      {month: '2023-11', company: '게임빌', type: '기존_비입주사', members: 37, revenue: 3719846},
+      {month: '2023-11', company: '선데이토즈', type: '기존_비입주사', members: 30, revenue: 2808206},
+      {month: '2023-11', company: 'B2C 개인회원', type: '신규_B2C', members: 172, revenue: 14006360},
+      {month: '2023-12', company: '위메이드', type: '기존_입주사_위메이드', members: 246, revenue: 23913773},
+      {month: '2023-12', company: '크래프톤', type: '기존_입주사_위메이드외', members: 158, revenue: 15006869},
+      {month: '2023-12', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 131, revenue: 13091326},
+      {month: '2023-12', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 177, revenue: 16752945},
+      {month: '2023-12', company: '넷마블', type: '기존_입주사_위메이드외', members: 101, revenue: 9634854},
+      {month: '2023-12', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 129, revenue: 12241869},
+      {month: '2023-12', company: '카카오게임즈', type: '기존_비입주사', members: 67, revenue: 6676046},
+      {month: '2023-12', company: '컴투스', type: '기존_비입주사', members: 55, revenue: 5028618},
+      {month: '2023-12', company: '펄어비스', type: '기존_비입주사', members: 44, revenue: 4073082},
+      {month: '2023-12', company: '게임빌', type: '기존_비입주사', members: 38, revenue: 3692562},
+      {month: '2023-12', company: '선데이토즈', type: '기존_비입주사', members: 28, revenue: 2727994},
+      {month: '2023-12', company: 'B2C 개인회원', type: '신규_B2C', members: 175, revenue: 13693028},
+      {month: '2024-01', company: '위메이드', type: '기존_입주사_위메이드', members: 253, revenue: 25234656},
+      {month: '2024-01', company: '크래프톤', type: '기존_입주사_위메이드외', members: 158, revenue: 14781332},
+      {month: '2024-01', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 129, revenue: 12821697},
+      {month: '2024-01', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 169, revenue: 16074803},
+      {month: '2024-01', company: '넷마블', type: '기존_입주사_위메이드외', members: 100, revenue: 9890382},
+      {month: '2024-01', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 125, revenue: 11834730},
+      {month: '2024-01', company: '카카오게임즈', type: '기존_비입주사', members: 71, revenue: 6655437},
+      {month: '2024-01', company: '컴투스', type: '기존_비입주사', members: 53, revenue: 5033754},
+      {month: '2024-01', company: '펄어비스', type: '기존_비입주사', members: 45, revenue: 4371808},
+      {month: '2024-01', company: '게임빌', type: '기존_비입주사', members: 36, revenue: 3449088},
+      {month: '2024-01', company: '선데이토즈', type: '기존_비입주사', members: 28, revenue: 2819653},
+      {month: '2024-01', company: 'B2C 개인회원', type: '신규_B2C', members: 181, revenue: 14889225},
+      {month: '2024-02', company: '위메이드', type: '기존_입주사_위메이드', members: 253, revenue: 25091945},
+      {month: '2024-02', company: '크래프톤', type: '기존_입주사_위메이드외', members: 154, revenue: 14810889},
+      {month: '2024-02', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 132, revenue: 12695074},
+      {month: '2024-02', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 170, revenue: 16967030},
+      {month: '2024-02', company: '넷마블', type: '기존_입주사_위메이드외', members: 103, revenue: 10127754},
+      {month: '2024-02', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 128, revenue: 12557066},
+      {month: '2024-02', company: '카카오게임즈', type: '기존_비입주사', members: 68, revenue: 6779056},
+      {month: '2024-02', company: '컴투스', type: '기존_비입주사', members: 53, revenue: 5314966},
+      {month: '2024-02', company: '펄어비스', type: '기존_비입주사', members: 46, revenue: 4566738},
+      {month: '2024-02', company: '게임빌', type: '기존_비입주사', members: 35, revenue: 3435176},
+      {month: '2024-02', company: '선데이토즈', type: '기존_비입주사', members: 30, revenue: 2943877},
+      {month: '2024-02', company: 'B2C 개인회원', type: '신규_B2C', members: 188, revenue: 15922729},
+      {month: '2024-03', company: '위메이드', type: '기존_입주사_위메이드', members: 252, revenue: 25055382},
+      {month: '2024-03', company: '크래프톤', type: '기존_입주사_위메이드외', members: 157, revenue: 15196636},
+      {month: '2024-03', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 128, revenue: 12044734},
+      {month: '2024-03', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 169, revenue: 15815439},
+      {month: '2024-03', company: '넷마블', type: '기존_입주사_위메이드외', members: 103, revenue: 9916066},
+      {month: '2024-03', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 126, revenue: 12318133},
+      {month: '2024-03', company: '카카오게임즈', type: '기존_비입주사', members: 70, revenue: 6955098},
+      {month: '2024-03', company: '컴투스', type: '기존_비입주사', members: 53, revenue: 5164820},
+      {month: '2024-03', company: '펄어비스', type: '기존_비입주사', members: 46, revenue: 4416862},
+      {month: '2024-03', company: '게임빌', type: '기존_비입주사', members: 35, revenue: 3517398},
+      {month: '2024-03', company: '선데이토즈', type: '기존_비입주사', members: 29, revenue: 2857878},
+      {month: '2024-03', company: 'B2C 개인회원', type: '신규_B2C', members: 187, revenue: 14628928},
+      {month: '2024-04', company: '위메이드', type: '기존_입주사_위메이드', members: 255, revenue: 24916010},
+      {month: '2024-04', company: '크래프톤', type: '기존_입주사_위메이드외', members: 160, revenue: 15475476},
+      {month: '2024-04', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 132, revenue: 12934094},
+      {month: '2024-04', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 167, revenue: 16699997},
+      {month: '2024-04', company: '넷마블', type: '기존_입주사_위메이드외', members: 101, revenue: 9697635},
+      {month: '2024-04', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 128, revenue: 12084851},
+      {month: '2024-04', company: '카카오게임즈', type: '기존_비입주사', members: 70, revenue: 6813326},
+      {month: '2024-04', company: '컴투스', type: '기존_비입주사', members: 53, revenue: 5001757},
+      {month: '2024-04', company: '펄어비스', type: '기존_비입주사', members: 46, revenue: 4403104},
+      {month: '2024-04', company: '게임빌', type: '기존_비입주사', members: 35, revenue: 3299898},
+      {month: '2024-04', company: '선데이토즈', type: '기존_비입주사', members: 30, revenue: 2826478},
+      {month: '2024-04', company: 'B2C 개인회원', type: '신규_B2C', members: 196, revenue: 15481688},
+      {month: '2024-05', company: '위메이드', type: '기존_입주사_위메이드', members: 260, revenue: 25487080},
+      {month: '2024-05', company: '크래프톤', type: '기존_입주사_위메이드외', members: 160, revenue: 14940864},
+      {month: '2024-05', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 128, revenue: 12641357},
+      {month: '2024-05', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 166, revenue: 15938506},
+      {month: '2024-05', company: '넷마블', type: '기존_입주사_위메이드외', members: 103, revenue: 10050331},
+      {month: '2024-05', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 131, revenue: 12983018},
+      {month: '2024-05', company: '카카오게임즈', type: '기존_비입주사', members: 73, revenue: 6818084},
+      {month: '2024-05', company: '컴투스', type: '기존_비입주사', members: 53, revenue: 5140062},
+      {month: '2024-05', company: '펄어비스', type: '기존_비입주사', members: 46, revenue: 4478050},
+      {month: '2024-05', company: '게임빌', type: '기존_비입주사', members: 33, revenue: 3285175},
+      {month: '2024-05', company: '선데이토즈', type: '기존_비입주사', members: 30, revenue: 2776438},
+      {month: '2024-05', company: 'B2C 개인회원', type: '신규_B2C', members: 200, revenue: 15877942},
+      {month: '2024-06', company: '위메이드', type: '기존_입주사_위메이드', members: 252, revenue: 25368804},
+      {month: '2024-06', company: '크래프톤', type: '기존_입주사_위메이드외', members: 159, revenue: 15088387},
+      {month: '2024-06', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 131, revenue: 12589683},
+      {month: '2024-06', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 162, revenue: 16151282},
+      {month: '2024-06', company: '넷마블', type: '기존_입주사_위메이드외', members: 104, revenue: 9758393},
+      {month: '2024-06', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 130, revenue: 12793250},
+      {month: '2024-06', company: '카카오게임즈', type: '기존_비입주사', members: 71, revenue: 6958855},
+      {month: '2024-06', company: '컴투스', type: '기존_비입주사', members: 52, revenue: 5113056},
+      {month: '2024-06', company: '펄어비스', type: '기존_비입주사', members: 47, revenue: 4460208},
+      {month: '2024-06', company: '게임빌', type: '기존_비입주사', members: 33, revenue: 3149856},
+      {month: '2024-06', company: '선데이토즈', type: '기존_비입주사', members: 31, revenue: 2836963},
+      {month: '2024-06', company: '하이퍼커넥트', type: '신규_B2B', members: 43, revenue: 3900948},
+      {month: '2024-06', company: 'B2C 개인회원', type: '신규_B2C', members: 206, revenue: 15966772},
+      {month: '2024-07', company: '위메이드', type: '기존_입주사_위메이드', members: 263, revenue: 26198373},
+      {month: '2024-07', company: '크래프톤', type: '기존_입주사_위메이드외', members: 161, revenue: 15115072},
+      {month: '2024-07', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 131, revenue: 12302256},
+      {month: '2024-07', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 165, revenue: 15895350},
+      {month: '2024-07', company: '넷마블', type: '기존_입주사_위메이드외', members: 104, revenue: 9888624},
+      {month: '2024-07', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 132, revenue: 12732894},
+      {month: '2024-07', company: '카카오게임즈', type: '기존_비입주사', members: 72, revenue: 7084272},
+      {month: '2024-07', company: '컴투스', type: '기존_비입주사', members: 52, revenue: 4941091},
+      {month: '2024-07', company: '펄어비스', type: '기존_비입주사', members: 48, revenue: 4667318},
+      {month: '2024-07', company: '게임빌', type: '기존_비입주사', members: 31, revenue: 3076131},
+      {month: '2024-07', company: '선데이토즈', type: '기존_비입주사', members: 31, revenue: 2865349},
+      {month: '2024-07', company: '하이퍼커넥트', type: '신규_B2B', members: 47, revenue: 4292706},
+      {month: '2024-07', company: '두나무', type: '신규_B2B', members: 50, revenue: 4691850},
+      {month: '2024-07', company: 'B2C 개인회원', type: '신규_B2C', members: 206, revenue: 15616598},
+      {month: '2024-08', company: '위메이드', type: '기존_입주사_위메이드', members: 262, revenue: 26063018},
+      {month: '2024-08', company: '크래프톤', type: '기존_입주사_위메이드외', members: 159, revenue: 15349005},
+      {month: '2024-08', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 127, revenue: 12655077},
+      {month: '2024-08', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 162, revenue: 16116378},
+      {month: '2024-08', company: '넷마블', type: '기존_입주사_위메이드외', members: 105, revenue: 10173825},
+      {month: '2024-08', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 135, revenue: 13095225},
+      {month: '2024-08', company: '카카오게임즈', type: '기존_비입주사', members: 75, revenue: 6974400},
+      {month: '2024-08', company: '컴투스', type: '기존_비입주사', members: 52, revenue: 5061656},
+      {month: '2024-08', company: '펄어비스', type: '기존_비입주사', members: 49, revenue: 4636843},
+      {month: '2024-08', company: '게임빌', type: '기존_비입주사', members: 31, revenue: 2954982},
+      {month: '2024-08', company: '선데이토즈', type: '기존_비입주사', members: 31, revenue: 3059566},
+      {month: '2024-08', company: '하이퍼커넥트', type: '신규_B2B', members: 48, revenue: 4386144},
+      {month: '2024-08', company: '두나무', type: '신규_B2B', members: 53, revenue: 4829324},
+      {month: '2024-08', company: '딜리셔스', type: '신규_B2B', members: 30, revenue: 2813100},
+      {month: '2024-08', company: 'B2C 개인회원', type: '신규_B2C', members: 196, revenue: 16049459},
+      {month: '2024-09', company: '위메이드', type: '기존_입주사_위메이드', members: 261, revenue: 26100000},
+      {month: '2024-09', company: '크래프톤', type: '기존_입주사_위메이드외', members: 161, revenue: 15449850},
+      {month: '2024-09', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 128, revenue: 12544000},
+      {month: '2024-09', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 159, revenue: 15741000},
+      {month: '2024-09', company: '넷마블', type: '기존_입주사_위메이드외', members: 107, revenue: 10486500},
+      {month: '2024-09', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 136, revenue: 13328000},
+      {month: '2024-09', company: '카카오게임즈', type: '기존_비입주사', members: 76, revenue: 7372000},
+      {month: '2024-09', company: '컴투스', type: '기존_비입주사', members: 52, revenue: 5096000},
+      {month: '2024-09', company: '펄어비스', type: '기존_비입주사', members: 49, revenue: 4753000},
+      {month: '2024-09', company: '게임빌', type: '기존_비입주사', members: 30, revenue: 2940000},
+      {month: '2024-09', company: '선데이토즈', type: '기존_비입주사', members: 32, revenue: 3136000},
+      {month: '2024-09', company: '하이퍼커넥트', type: '신규_B2B', members: 51, revenue: 4692000},
+      {month: '2024-09', company: '두나무', type: '신규_B2B', members: 55, revenue: 5115000},
+      {month: '2024-09', company: '딜리셔스', type: '신규_B2B', members: 34, revenue: 3026000},
+      {month: '2024-09', company: '비바리퍼블리카', type: '신규_B2B', members: 27, revenue: 2457000},
+      {month: '2024-09', company: 'B2C 개인회원', type: '신규_B2C', members: 190, revenue: 14579259},
+      {month: '2024-10', company: '위메이드', type: '기존_입주사_위메이드', members: 265, revenue: 26235000},
+      {month: '2024-10', company: '크래프톤', type: '기존_입주사_위메이드외', members: 162, revenue: 15552000},
+      {month: '2024-10', company: '스마일게이트', type: '기존_입주사_위메이드외', members: 126, revenue: 12348000},
+      {month: '2024-10', company: '넥슨코리아', type: '기존_입주사_위메이드외', members: 156, revenue: 15288000},
+      {month: '2024-10', company: '넷마블', type: '기존_입주사_위메이드외', members: 108, revenue: 10584000},
+      {month: '2024-10', company: '엔씨소프트', type: '기존_입주사_위메이드외', members: 139, revenue: 13611000},
+      {month: '2024-10', company: '카카오게임즈', type: '기존_비입주사', members: 78, revenue: 7566000},
+      {month: '2024-10', company: '컴투스', type: '기존_비입주사', members: 51, revenue: 4998000},
+      {month: '2024-10', company: '펄어비스', type: '기존_비입주사', members: 50, revenue: 4850000},
+      {month: '2024-10', company: '게임빌', type: '기존_비입주사', members: 30, revenue: 2940000},
+      {month: '2024-10', company: '선데이토즈', type: '기존_비입주사', members: 33, revenue: 3234000},
+      {month: '2024-10', company: '하이퍼커넥트', type: '신규_B2B', members: 53, revenue: 4876000},
+      {month: '2024-10', company: '두나무', type: '신규_B2B', members: 57, revenue: 5244000},
+      {month: '2024-10', company: '딜리셔스', type: '신규_B2B', members: 37, revenue: 3404000},
+      {month: '2024-10', company: '비바리퍼블리카', type: '신규_B2B', members: 29, revenue: 2663000},
+      {month: '2024-10', company: 'B2C 개인회원', type: '신규_B2C', members: 192, revenue: 15249316}
+    ];
+
+    // 멤버십 상품 더미 데이터
+    const membershipData = [
+      {month: '2024-10', company: '위메이드', product: '1개월 구독권', count: 80, amount: 6400000},
+      {month: '2024-10', company: '위메이드', product: '6개월 이용권', count: 100, amount: 11000000},
+      {month: '2024-10', company: '위메이드', product: '12개월 이용권', count: 85, amount: 8835000},
+      {month: '2024-10', company: '크래프톤', product: '1개월 구독권', count: 50, amount: 4000000},
+      {month: '2024-10', company: '크래프톤', product: '6개월 이용권', count: 70, amount: 7700000},
+      {month: '2024-10', company: '크래프톤', product: '12개월 이용권', count: 42, amount: 4368000},
+      {month: '2024-10', company: '넥슨코리아', product: '1개월 구독권', count: 45, amount: 3600000},
+      {month: '2024-10', company: '넥슨코리아', product: '6개월 이용권', count: 65, amount: 7150000},
+      {month: '2024-10', company: '넥슨코리아', product: '12개월 이용권', count: 46, amount: 4784000},
+      {month: '2024-10', company: 'B2C 개인회원', product: '1개월 구독권', count: 120, amount: 9600000},
+      {month: '2024-10', company: 'B2C 개인회원', product: '6개월 이용권', count: 50, amount: 5500000},
+      {month: '2024-10', company: 'B2C 개인회원', product: '12개월 이용권', count: 22, amount: 2288000}
+    ];
+
+    // 콘텐츠 & 옵션 더미 데이터
+    const contentData = [
+      {month: '2024-10', company: '위메이드', product: 'PT 10회', count: 30, amount: 2400000},
+      {month: '2024-10', company: '위메이드', product: 'PT 20회', count: 15, amount: 1650000},
+      {month: '2024-10', company: '위메이드', product: 'PT 30회', count: 8, amount: 1040000},
+      {month: '2024-10', company: '위메이드', product: '스쿼시', count: 8, amount: 480000},
+      {month: '2024-10', company: 'B2C 개인회원', product: 'PT 10회', count: 40, amount: 3200000},
+      {month: '2024-10', company: 'B2C 개인회원', product: 'PT 20회', count: 22, amount: 2420000},
+      {month: '2024-10', company: 'B2C 개인회원', product: 'PT 30회', count: 12, amount: 1560000},
+      {month: '2024-10', company: 'B2C 개인회원', product: '골프', count: 12, amount: 1440000},
+      {month: '2024-10', company: 'B2C 개인회원', product: '1일권', count: 35, amount: 525000},
+      {month: '2024-10', company: '크래프톤', product: 'PT 10회', count: 18, amount: 1440000},
+      {month: '2024-10', company: '크래프톤', product: '스쿼시', count: 5, amount: 300000},
+      {month: '2024-10', company: '넥슨코리아', product: 'PT 10회', count: 22, amount: 1760000},
+      {month: '2024-10', company: '넥슨코리아', product: 'PT 20회', count: 10, amount: 1100000},
+      {month: '2024-10', company: '넥슨코리아', product: 'PT 30회', count: 5, amount: 650000}
+    ];
+
+    const Dashboard = () => {
+      const [activeTab, setActiveTab] = useState('overview');
+      const [sortConfig, setSortConfig] = useState({ key: 'monthChangePercent', direction: 'asc' });
+      const [expandedCategories, setExpandedCategories] = useState({
+        existing: true,
+        new: true,
+        wemade: true,
+        wemadeOther: true,
+        nonResident: true,
+        b2b: true,
+        b2c: true
+      });
+      const [selectedCompany, setSelectedCompany] = useState(null);
+      const [showTrendChart, setShowTrendChart] = useState(false);
+      const [membershipView, setMembershipView] = useState('byCompany');
+      const [expandedCompanies, setExpandedCompanies] = useState({});
+
+      const processedData = useMemo(() => {
+        const months = [...new Set(rawData.map(d => d.month))].sort();
+        const latestMonth = months[months.length - 1];
+        const previousMonth = months[months.length - 2];
+
+        const latestData = rawData.filter(d => d.month === latestMonth);
+        const previousData = rawData.filter(d => d.month === previousMonth);
+
+        const totalMembers = latestData.reduce((sum, d) => sum + d.members, 0);
+        const totalRevenue = latestData.reduce((sum, d) => sum + d.revenue, 0);
+
+        const prevTotalMembers = previousData.reduce((sum, d) => sum + d.members, 0);
+        const prevTotalRevenue = previousData.reduce((sum, d) => sum + d.revenue, 0);
+
+        const memberChange = totalMembers - prevTotalMembers;
+        const revenueChange = totalRevenue - prevTotalRevenue;
+
+        const corporateMembers = latestData
+          .filter(d => d.type !== '신규_B2C')
+          .reduce((sum, d) => sum + d.members, 0);
+        const corporateRatio = (corporateMembers / totalMembers * 100).toFixed(1);
+
+        const hierarchyData = {
+          existing: {
+            wemade: latestData.filter(d => d.type === '기존_입주사_위메이드'),
+            wemadeOther: latestData.filter(d => d.type === '기존_입주사_위메이드외'),
+            nonResident: latestData.filter(d => d.type === '기존_비입주사')
+          },
+          new: {
+            b2b: latestData.filter(d => d.type === '신규_B2B'),
+            b2c: latestData.filter(d => d.type === '신규_B2C')
+          }
+        };
+
+        const companies = [...new Set(rawData.map(d => d.company))].filter(c => c !== 'B2C 개인회원');
+
+        const companyAnalysis = companies.map(company => {
+          const companyData = rawData.filter(d => d.company === company).sort((a, b) => a.month.localeCompare(b.month));
+          const latest = companyData[companyData.length - 1];
+          const previous = companyData[companyData.length - 2];
+          const quarterAgo = companyData[companyData.length - 4];
+
+          const monthChange = latest && previous ? latest.members - previous.members : 0;
+          const quarterChange = latest && quarterAgo ? latest.members - quarterAgo.members : 0;
+
+          const monthChangePercent = previous ? (monthChange / previous.members * 100) : 0;
+          const quarterChangePercent = quarterAgo ? (quarterChange / quarterAgo.members * 100) : 0;
+
+          let status = '🟢';
+          let statusBg = 'bg-green-50';
+          if (monthChangePercent < -10 || (monthChange < 0 && quarterChange < 0)) {
+            status = '🔴';
+            statusBg = 'bg-red-50';
+          } else if (monthChangePercent < -5) {
+            status = '🟡';
+            statusBg = 'bg-yellow-50';
+          }
+
+          return {
+            name: company,
+            type: latest.type,
+            members: latest.members,
+            revenue: latest.revenue,
+            monthChange,
+            quarterChange,
+            monthChangePercent,
+            quarterChangePercent,
+            status,
+            statusBg,
+            history: companyData
+          };
+        });
+
+        const sortedCompanies = [...companyAnalysis].sort((a, b) => {
+          const aValue = a[sortConfig.key];
+          const bValue = b[sortConfig.key];
+
+          if (sortConfig.direction === 'asc') {
+            return aValue > bValue ? 1 : -1;
+          } else {
+            return aValue < bValue ? 1 : -1;
+          }
+        });
+
+        const riskCompanies = companyAnalysis.filter(c => c.status === '🔴').length;
+
+        const totalHistory = months.map(month => {
+          const monthData = rawData.filter(d => d.month === month);
+          return {
+            month,
+            members: monthData.reduce((sum, d) => sum + d.members, 0),
+            revenue: monthData.reduce((sum, d) => sum + d.revenue, 0)
+          };
+        });
+
+        return {
+          totalMembers,
+          totalRevenue,
+          memberChange,
+          revenueChange,
+          corporateRatio,
+          riskCompanies,
+          companyAnalysis: sortedCompanies,
+          hierarchyData,
+          latestMonth,
+          riskList: companyAnalysis.filter(c => c.status === '🔴'),
+          totalHistory
+        };
+      }, [rawData, sortConfig]);
+
+      const handleSort = (key) => {
+        setSortConfig(prev => ({
+          key,
+          direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
+      };
+
+      const downloadCSV = () => {
+        const headers = ['월', '법인명', '유형', '회원수', '매출'];
+        const rows = rawData.map(d => [d.month, d.company, d.type, d.members, d.revenue]);
+
+        const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Butfit_판교벤처타운_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+      };
+
+      const toggleCategory = (category) => {
+        setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }));
+      };
+
+      const toggleCompany = (company) => {
+        setExpandedCompanies(prev => ({ ...prev, [company]: !prev[company] }));
+      };
+
+      const formatRevenue = (amount) => {
+        return `₩${amount.toLocaleString()}`;
+      };
+
+      const AllCompanyTrendChart = ({ companies, totalHistory }) => {
+        if (!companies || companies.length === 0) return null;
+
+        const analyzedCompanies = companies.map(company => {
+          const history = company.history;
+          const startValue = history[0].members;
+          const endValue = history[history.length - 1].members;
+          const totalChange = ((endValue - startValue) / startValue) * 100;
+
+          return {
+            ...company,
+            totalChange,
+            trend: totalChange < -5 ? 'decrease' : totalChange > 5 ? 'increase' : 'stable'
+          };
+        });
+
+        const decreasingCompanies = analyzedCompanies.filter(c => c.trend === 'decrease');
+        const increasingCompanies = analyzedCompanies.filter(c => c.trend === 'increase');
+        const stableCompanies = analyzedCompanies.filter(c => c.trend === 'stable');
+
+        const chartData = totalHistory.map((h, idx) => {
+          const dataPoint = {
+            month: h.month.slice(2),
+            Total: h.members
+          };
+
+          [...decreasingCompanies, ...increasingCompanies].slice(0, 5).forEach(company => {
+            if (company.history[idx]) {
+              dataPoint[company.name] = company.history[idx].members;
+            }
+          });
+
+          return dataPoint;
+        });
+
+        return (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">전체 회원 추이 (Total) 및 주요 법인 현황</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  총 {companies.length}개 법인 ·
+                  <span className="text-red-600 font-medium ml-2">감소 {decreasingCompanies.length}개</span>
+                  <span className="text-green-600 font-medium ml-2">증가 {increasingCompanies.length}개</span>
+                  <span className="text-gray-600 font-medium ml-2">안정 {stableCompanies.length}개</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="relative bg-white rounded-lg p-4" style={{ height: '500px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) => value.toLocaleString()}
+                    label={{ value: '회원수 (명)', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) => value.toLocaleString()}
+                  />
+                  <Tooltip
+                    formatter={(value, name) => [value.toLocaleString() + '명', name]}
+                    contentStyle={{ fontSize: 12 }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconType="line"
+                  />
+
+                  <Bar
+                    yAxisId="right"
+                    dataKey="Total"
+                    fill="#93c5fd"
+                    fillOpacity={0.6}
+                    radius={[4, 4, 0, 0]}
+                  />
+
+                  {decreasingCompanies.slice(0, 3).map((company, idx) => (
+                    <Line
+                      key={`decrease-${idx}`}
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={company.name}
+                      stroke="#ef4444"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 6 }}
+                    />
+                  ))}
+
+                  {increasingCompanies.slice(0, 2).map((company, idx) => (
+                    <Line
+                      key={`increase-${idx}`}
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={company.name}
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{ r: 5 }}
+                    />
+                  ))}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="flex gap-6 mt-4 text-sm flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-3 bg-blue-300 opacity-60 rounded"></div>
+                <span className="text-gray-600 font-medium">Total (막대그래프)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-0.5 bg-red-500"></div>
+                <span className="text-gray-600">감소 추세 법인 (꺾은선)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-0.5 bg-green-500"></div>
+                <span className="text-gray-600">증가 추세 법인 (꺾은선)</span>
+              </div>
+            </div>
+
+            {decreasingCompanies.length > 0 && (
+              <div className="mt-6 bg-red-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-red-800 mb-2">⚠️ 감소 추세 법인 상세</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {decreasingCompanies.map((company, idx) => (
+                    <div key={idx} className="text-sm">
+                      <span className="font-medium text-red-900">{company.name}</span>
+                      <span className="text-red-700 ml-2">
+                        {company.totalChange.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {increasingCompanies.length > 0 && (
+              <div className="mt-4 bg-green-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-green-800 mb-2">📈 증가 추세 법인 상세</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {increasingCompanies.map((company, idx) => (
+                    <div key={idx} className="text-sm">
+                      <span className="font-medium text-green-900">{company.name}</span>
+                      <span className="text-green-700 ml-2">
+                        +{company.totalChange.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      const TrendModal = ({ company, onClose }) => {
+        if (!company) return null;
+
+        const members = company.history.map(h => h.members);
+        const maxMembers = Math.max(...members);
+        const minMembers = Math.min(...members);
+
+        const chartData = company.history.map(h => ({
+          month: h.month.slice(5),
+          members: h.members
+        }));
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+            <div className="bg-white rounded-lg p-8 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">{company.name} - 전체 기간 추이</h2>
+                <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="relative bg-white rounded-lg" style={{ height: '400px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => value.toLocaleString()} />
+                    <Tooltip
+                      formatter={(value) => value.toLocaleString() + '명'}
+                      contentStyle={{ fontSize: 12 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="members"
+                      stroke="#3b82f6"
+                      strokeWidth={3}
+                      fill="#3b82f6"
+                      fillOpacity={0.1}
+                      dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-6 grid grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded">
+                  <div className="text-sm text-gray-600">최신 회원수</div>
+                  <div className="text-2xl font-bold text-blue-600">{members[members.length - 1].toLocaleString()}명</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded">
+                  <div className="text-sm text-gray-600">최고치</div>
+                  <div className="text-2xl font-bold text-green-600">{maxMembers.toLocaleString()}명</div>
+                </div>
+                <div className="bg-red-50 p-4 rounded">
+                  <div className="text-sm text-gray-600">최저치</div>
+                  <div className="text-2xl font-bold text-red-600">{minMembers.toLocaleString()}명</div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded">
+                  <div className="text-sm text-gray-600">평균</div>
+                  <div className="text-2xl font-bold text-gray-600">
+                    {Math.round(members.reduce((a, b) => a + b, 0) / members.length).toLocaleString()}명
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const KPICard = ({ title, value, change, isRevenue, isWarning }) => (
+        <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+          <div className="text-sm font-medium text-gray-500 mb-2">{title}</div>
+          <div className="text-3xl font-bold text-gray-900 mb-2">{value}</div>
+          {change !== null && change !== undefined && (
+            <div className={`text-sm font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {isRevenue ? (
+                <>
+                  {change >= 0 ? '↑' : '↓'} {formatRevenue(Math.abs(change))}
+                  <span className="text-xs ml-1 text-gray-500">전월 대비</span>
+                </>
+              ) : (
+                <>
+                  {change >= 0 ? '↑' : '↓'} {Math.abs(change)}명
+                  <span className="text-xs ml-1 text-gray-500">전월 대비</span>
+                </>
+              )}
+            </div>
+          )}
+          {isWarning && <div className="text-sm font-medium text-red-600">⚠️ 요주의</div>}
+        </div>
+      );
+
+      const HierarchyRow = ({ label, data, members, revenue, level = 0, category, isExpanded }) => (
+        <>
+          <tr className={`hover:bg-gray-50 ${level === 0 ? 'bg-gray-100 font-bold' : level === 1 ? 'bg-gray-50' : ''}`}>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900" style={{ paddingLeft: `${24 + level * 24}px` }}>
+              <div className="flex items-center gap-2">
+                {category && (
+                  <button onClick={() => toggleCategory(category)} className="focus:outline-none">
+                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                )}
+                {label}
+              </div>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
+              {members.toLocaleString()}명
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
+              {formatRevenue(revenue)}
+            </td>
+          </tr>
+          {isExpanded && data && data.map((item, idx) => (
+            <tr key={idx} className="hover:bg-gray-50">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700" style={{ paddingLeft: `${24 + (level + 1) * 24}px` }}>
+                {item.company}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                {item.members.toLocaleString()}명
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                {formatRevenue(item.revenue)}
+              </td>
+            </tr>
+          ))}
+        </>
+      );
+
+      const SortIcon = ({ columnKey }) => {
+        if (sortConfig.key !== columnKey) return <span className="text-gray-400">⇅</span>;
+        return sortConfig.direction === 'asc' ? <span className="text-blue-600">↑</span> : <span className="text-blue-600">↓</span>;
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-50 p-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="mb-8 flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Butfit 판교벤처타운</h1>
+                <p className="text-gray-600 mt-2">법인회원 관리 대시보드 · 기준: {processedData.latestMonth}</p>
+              </div>
+              <button
+                onClick={downloadCSV}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Download size={20} />
+                CSV 다운로드
+              </button>
+            </div>
+
+            <div className="flex gap-2 mb-8 border-b border-gray-200">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  activeTab === 'overview'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                전체 현황
+              </button>
+              <button
+                onClick={() => setActiveTab('hierarchy')}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  activeTab === 'hierarchy'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                계층별 분석
+              </button>
+              <button
+                onClick={() => setActiveTab('membership')}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  activeTab === 'membership'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                멤버십 현황
+              </button>
+              <button
+                onClick={() => setActiveTab('content')}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  activeTab === 'content'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                콘텐츠 & 옵션 현황
+              </button>
+            </div>
+
+            {activeTab === 'overview' && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  <KPICard
+                    title="총 유효회원"
+                    value={`${processedData.totalMembers.toLocaleString()}명`}
+                    change={processedData.memberChange}
+                  />
+                  <KPICard
+                    title="당월 매출"
+                    value={formatRevenue(processedData.totalRevenue)}
+                    change={processedData.revenueChange}
+                    isRevenue
+                  />
+                  <KPICard
+                    title="법인회원 비중"
+                    value={`${processedData.corporateRatio}%`}
+                    change={null}
+                  />
+                  <KPICard
+                    title="이탈 위험 법인"
+                    value={`${processedData.riskCompanies}개사`}
+                    change={null}
+                    isWarning={processedData.riskCompanies > 0}
+                  />
+                </div>
+
+                {processedData.riskCompanies > 0 && (
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-8">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <span className="text-2xl">⚠️</span>
+                      </div>
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-red-800">이번 달 주의 법인 ({processedData.riskCompanies}개사)</h3>
+                        <div className="mt-2 text-sm text-red-700 space-y-1">
+                          {processedData.riskList.slice(0, 3).map((company, idx) => (
+                            <div key={idx}>
+                              • <strong>{company.name}</strong>: {company.monthChange > 0 ? '+' : ''}{company.monthChange}명
+                              ({company.monthChangePercent > 0 ? '+' : ''}{company.monthChangePercent.toFixed(1)}%)
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-lg shadow mb-8">
+                  <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">법인별 회원 증감 현황</h2>
+                      <p className="text-sm text-gray-500 mt-1">법인명을 클릭하거나 추이 아이콘을 클릭하면 전체 기간 추이를 확인할 수 있습니다</p>
+                    </div>
+                    <button
+                      onClick={() => setShowTrendChart(!showTrendChart)}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <TrendingUp size={20} />
+                      {showTrendChart ? '차트 숨기기' : '📊 전체 법인 추이 차트'}
+                    </button>
+                  </div>
+
+                  {showTrendChart && <AllCompanyTrendChart companies={processedData.companyAnalysis} totalHistory={processedData.totalHistory} />}
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('name')}>
+                            법인명 <SortIcon columnKey="name" />
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">구분</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('members')}>
+                            당월회원 <SortIcon columnKey="members" />
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('monthChange')}>
+                            전월대비 <SortIcon columnKey="monthChange" />
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('quarterChange')}>
+                            전분기대비 <SortIcon columnKey="quarterChange" />
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">추이</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {processedData.companyAnalysis.map((company, idx) => (
+                          <tr key={idx} className={`hover:bg-gray-50 transition-colors ${company.statusBg}`}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {company.name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {company.type.replace('기존_', '').replace('신규_', '').replace('_', ' ')}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
+                              {company.members.toLocaleString()}명
+                            </td>
+                            <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+                              company.monthChange > 0 ? 'text-green-600' : company.monthChange < 0 ? 'text-red-600' : 'text-gray-500'
+                            }`}>
+                              {company.monthChange > 0 ? '+' : ''}{company.monthChange}명
+                              <span className="text-xs ml-1">
+                                ({company.monthChangePercent > 0 ? '+' : ''}{company.monthChangePercent.toFixed(1)}%)
+                              </span>
+                            </td>
+                            <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+                              company.quarterChange > 0 ? 'text-green-600' : company.quarterChange < 0 ? 'text-red-600' : 'text-gray-500'
+                            }`}>
+                              {company.quarterChange > 0 ? '+' : ''}{company.quarterChange}명
+                              <span className="text-xs ml-1">
+                                ({company.quarterChangePercent > 0 ? '+' : ''}{company.quarterChangePercent.toFixed(1)}%)
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-2xl">
+                              {company.status}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <button
+                                onClick={() => setSelectedCompany(company)}
+                                className="text-blue-600 hover:text-blue-800 transition-colors"
+                              >
+                                <TrendingUp size={20} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">상태 구분</h3>
+                  <div className="flex flex-wrap gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🟢</span>
+                      <span className="text-gray-600">안정: 유지 또는 증가</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🟡</span>
+                      <span className="text-gray-600">주의: 전월 대비 5-10% 감소</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">🔴</span>
+                      <span className="text-gray-600">긴급: 전월 대비 10% 이상 감소 또는 2개월 연속 감소</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'hierarchy' && (
+              <div className="bg-white rounded-lg shadow">
+                <div className="p-6 border-b border-gray-200">
+                  <h2 className="text-xl font-bold text-gray-900">계층별 회원 및 매출 현황</h2>
+                  <p className="text-sm text-gray-500 mt-1">카테고리를 클릭하여 펼치거나 접을 수 있습니다</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">구분</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">회원수</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">매출</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      <HierarchyRow
+                        label="기존"
+                        members={
+                          processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.members, 0) +
+                          processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.members, 0) +
+                          processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.members, 0)
+                        }
+                        revenue={
+                          processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.revenue, 0) +
+                          processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.revenue, 0) +
+                          processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.revenue, 0)
+                        }
+                        level={0}
+                        category="existing"
+                        isExpanded={expandedCategories.existing}
+                      />
+                      {expandedCategories.existing && (
+                        <>
+                          <HierarchyRow
+                            label="위메이드"
+                            data={processedData.hierarchyData.existing.wemade}
+                            members={processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.members, 0)}
+                            revenue={processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.revenue, 0)}
+                            level={1}
+                            category="wemade"
+                            isExpanded={expandedCategories.wemade}
+                          />
+                          <HierarchyRow
+                            label="위메이드 외"
+                            data={processedData.hierarchyData.existing.wemadeOther}
+                            members={processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.members, 0)}
+                            revenue={processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.revenue, 0)}
+                            level={1}
+                            category="wemadeOther"
+                            isExpanded={expandedCategories.wemadeOther}
+                          />
+                          <HierarchyRow
+                            label="비입주사"
+                            data={processedData.hierarchyData.existing.nonResident}
+                            members={processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.members, 0)}
+                            revenue={processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.revenue, 0)}
+                            level={1}
+                            category="nonResident"
+                            isExpanded={expandedCategories.nonResident}
+                          />
+                        </>
+                      )}
+
+                      <HierarchyRow
+                        label="신규"
+                        members={
+                          processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.members, 0) +
+                          processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.members, 0)
+                        }
+                        revenue={
+                          processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.revenue, 0) +
+                          processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.revenue, 0)
+                        }
+                        level={0}
+                        category="new"
+                        isExpanded={expandedCategories.new}
+                      />
+                      {expandedCategories.new && (
+                        <>
+                          <HierarchyRow
+                            label="B2B"
+                            data={processedData.hierarchyData.new.b2b}
+                            members={processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.members, 0)}
+                            revenue={processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.revenue, 0)}
+                            level={1}
+                            category="b2b"
+                            isExpanded={expandedCategories.b2b}
+                          />
+                          <HierarchyRow
+                            label="B2C"
+                            data={processedData.hierarchyData.new.b2c}
+                            members={processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.members, 0)}
+                            revenue={processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.revenue, 0)}
+                            level={1}
+                            category="b2c"
+                            isExpanded={expandedCategories.b2c}
+                          />
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'membership' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-gray-900">멤버십 판매 현황 (2024년 10월)</h2>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setMembershipView('byCompany')}
+                        className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                          membershipView === 'byCompany' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        법인별 보기
+                      </button>
+                      <button
+                        onClick={() => setMembershipView('byProduct')}
+                        className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                          membershipView === 'byProduct' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        상품별 보기
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    {membershipView === 'byCompany' ? (
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">법인명</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">판매수량</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">매출</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {[...new Set(membershipData.map(d => d.company))].map((company, compIdx) => {
+                            const companyProducts = membershipData.filter(d => d.company === company);
+                            const isExpanded = expandedCompanies[company];
+                            const totalCount = companyProducts.reduce((sum, p) => sum + p.count, 0);
+                            const totalAmount = companyProducts.reduce((sum, p) => sum + p.amount, 0);
+
+                            return (
+                              <React.Fragment key={compIdx}>
+                                <tr className="bg-gray-50 hover:bg-gray-100 cursor-pointer" onClick={() => toggleCompany(company)}>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                    <div className="flex items-center gap-2">
+                                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                      {company}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">전체</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{totalCount}개</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{formatRevenue(totalAmount)}</td>
+                                </tr>
+                                {isExpanded && companyProducts.map((item, idx) => (
+                                  <tr key={idx} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500" style={{ paddingLeft: '48px' }}>↳</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.product}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{item.count}개</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatRevenue(item.amount)}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 판매수량</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 매출</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {['1개월 구독권', '6개월 이용권', '12개월 이용권'].map((product, idx) => {
+                            const productData = membershipData.filter(d => d.product === product);
+                            const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
+                            const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
+
+                            return (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{totalCount}개</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{formatRevenue(totalAmount)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'content' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-gray-900">콘텐츠 & 옵션 판매 현황 (2024년 10월)</h2>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    {['PT 10회', 'PT 20회', 'PT 30회', '스쿼시', '골프', '1일권'].map((product, idx) => {
+                      const productData = contentData.filter(d => d.product === product);
+                      const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
+                      const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
+
+                      if (totalCount === 0) return null;
+
+                      return (
+                        <div key={idx} className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                          <div className="text-sm text-gray-700 font-semibold">{product}</div>
+                          <div className="text-2xl font-bold text-blue-700 mt-2">{totalCount}개</div>
+                          <div className="text-sm text-gray-600 mt-1">{formatRevenue(totalAmount)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 판매수량</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 매출</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">평균 단가</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {['PT 10회', 'PT 20회', 'PT 30회', '스쿼시', '골프', '1일권'].map((product, idx) => {
+                          const productData = contentData.filter(d => d.product === product);
+                          const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
+                          const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
+                          const avgPrice = totalCount > 0 ? Math.round(totalAmount / totalCount) : 0;
+
+                          if (totalCount === 0) return null;
+
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{totalCount}개</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{formatRevenue(totalAmount)}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-right">{formatRevenue(avgPrice)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">법인별 구매 내역 (상세)</h3>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">법인명</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">수량</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">매출</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {contentData.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.company}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.product}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{item.count}개</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatRevenue(item.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedCompany && <TrendModal company={selectedCompany} onClose={() => setSelectedCompany(null)} />}
+        </div>
+      );
+    };
+
+    // React 18로 렌더링
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Dashboard />);
+  </script>
+</body>
+</html>
