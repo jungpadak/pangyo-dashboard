@@ -231,9 +231,9 @@ const Dashboard = () => {
   // API에서 실제 데이터 가져오기
   useEffect(() => {
     Promise.all([
-      fetch('http://localhost:3003/api/dashboard-data').then(res => res.json()),
-      fetch('http://localhost:3003/api/company-stats').then(res => res.json()),
-      fetch('http://localhost:3003/api/pangyo-segments').then(res => res.json())
+      fetch('/api/dashboard-data').then(res => res.json()),
+      fetch('/api/company-stats').then(res => res.json()),
+      fetch('/api/pangyo-segments').then(res => res.json())
     ])
       .then(([dashboardRes, companyRes, segmentRes]) => {
         if (dashboardRes.success) {
