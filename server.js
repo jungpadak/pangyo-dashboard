@@ -432,7 +432,17 @@ app.get('/api/pangyo-members', async (req, res) => {
 // 세그먼트별 회원 통계 API (기존/신규)
 app.get('/api/pangyo-segments', async (req, res) => {
   try {
-    const excludeConditions = `
+    // view 파라미터: 'valid' (기본, 유효회원만) 또는 'all' (전체 회원)
+    const view = req.query.view || 'valid';
+
+    // month 파라미터 받기 (없으면 현재 월)
+    const requestedMonth = req.query.month;
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const targetMonth = requestedMonth || currentMonth;
+
+    // view=valid일 때만 필터 적용
+    const excludeConditions = view === 'valid' ? `
       AND m.title NOT LIKE '%PT%'
       AND m.title NOT LIKE '%개인레슨%'
       AND m.title NOT LIKE '%프라이빗레슨%'
@@ -442,86 +452,259 @@ app.get('/api/pangyo-segments', async (req, res) => {
       AND m.title NOT LIKE '%골프락커%'
       AND m.title NOT LIKE '%시설대관%'
       AND m.title NOT LIKE '%제휴업체%'
-    `;
+    ` : '';
 
-    // 전체 회원 조회 (user_id 포함)
-    const allMembersQuery = await pool.query(`
-      SELECT DISTINCT ON (m.id)
-        m.id,
-        u.id as user_id
-      FROM b_class_bmembership m
-      JOIN b_payment_btransaction t ON m.transaction_id = t.id
-      JOIN b_payment_border o ON t.order_id = o.id
-      LEFT JOIN user_user u ON o.user_id = u.id
-      WHERE m.is_active = true
-        AND m.end_date >= CURRENT_DATE
-        AND o.b_place_id = 26
-        AND t.is_refund = false
-        ${excludeConditions}
-    `);
+    // 월의 시작일과 종료일 계산
+    const monthStart = `${targetMonth}-01`;
+    const nextMonth = new Date(targetMonth + '-01');
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    nextMonth.setDate(0);
+    const monthEnd = `${targetMonth}-${String(nextMonth.getDate()).padStart(2, '0')}`;
+
+    // 현재 월 여부 확인
+    const isCurrentMonth = targetMonth === currentMonth;
+    const isOctober2025 = targetMonth === '2025-10';
+
+    // 전체 회원 조회 (유효 + 만료)
+    // end_date를 포함하여 유효/만료 상태를 판단
+    let allMembersQuery, expiredMembersQuery;
+
+    if (isOctober2025) {
+      // 10월: 결제일 기준 (오픈월 특성) - 유효 회원
+      allMembersQuery = await pool.query(`
+        SELECT DISTINCT ON (m.id)
+          m.id,
+          u.id as user_id,
+          m.end_date
+        FROM b_class_bmembership m
+        JOIN b_payment_btransaction t ON m.transaction_id = t.id
+        JOIN b_payment_border o ON t.order_id = o.id
+        LEFT JOIN user_user u ON o.user_id = u.id
+        WHERE m.is_active = true
+          AND t.pay_date >= $1::date
+          AND t.pay_date <= $2::date
+          AND o.b_place_id = 26
+          AND t.is_refund = false
+          ${excludeConditions}
+      `, [monthStart, monthEnd]);
+
+      // 10월 이전에 만료된 회원 (is_active 조건 제거)
+      expiredMembersQuery = await pool.query(`
+        SELECT DISTINCT ON (m.id)
+          m.id,
+          u.id as user_id,
+          m.end_date
+        FROM b_class_bmembership m
+        JOIN b_payment_btransaction t ON m.transaction_id = t.id
+        JOIN b_payment_border o ON t.order_id = o.id
+        LEFT JOIN user_user u ON o.user_id = u.id
+        WHERE m.end_date < $1::date
+          AND o.b_place_id = 26
+          AND t.is_refund = false
+          ${excludeConditions}
+      `, [monthStart]);
+    } else {
+      // 다른 월
+      const targetDate = isCurrentMonth
+        ? now.toISOString().split('T')[0]
+        : monthEnd;
+
+      // 유효 회원
+      allMembersQuery = await pool.query(`
+        SELECT DISTINCT ON (m.id)
+          m.id,
+          u.id as user_id,
+          m.end_date
+        FROM b_class_bmembership m
+        JOIN b_payment_btransaction t ON m.transaction_id = t.id
+        JOIN b_payment_border o ON t.order_id = o.id
+        LEFT JOIN user_user u ON o.user_id = u.id
+        WHERE m.is_active = true
+          AND m.begin_date <= $1::date
+          AND m.end_date >= $1::date
+          AND o.b_place_id = 26
+          AND t.is_refund = false
+          ${excludeConditions}
+      `, [targetDate]);
+
+      // 만료된 회원 (is_active 조건 제거 - 과거 회원 포함)
+      expiredMembersQuery = await pool.query(`
+        SELECT DISTINCT ON (m.id)
+          m.id,
+          u.id as user_id,
+          m.end_date
+        FROM b_class_bmembership m
+        JOIN b_payment_btransaction t ON m.transaction_id = t.id
+        JOIN b_payment_border o ON t.order_id = o.id
+        LEFT JOIN user_user u ON o.user_id = u.id
+        WHERE m.end_date < $1::date
+          AND o.b_place_id = 26
+          AND t.is_refund = false
+          ${excludeConditions}
+      `, [targetDate]);
+    }
 
     // Google Sheets 데이터로 분류 (user_id 기준 unique 카운트)
-    const existingUserIds = new Set();
-    const newUserIds = new Set();
-    const wemadeUserIds = new Set();
-    const otherTenantUserIds = new Set();
-    const nonTenantUserIds = new Set();
+    // 유효 회원
+    const activeExistingUserIds = new Set();
+    const activeNewUserIds = new Set();
+    const activeWemadeUserIds = new Set();
+    const activeOtherTenantUserIds = new Set();
+    const activeNonTenantUserIds = new Set();
 
     allMembersQuery.rows.forEach(row => {
       const userId = row.user_id ? String(row.user_id) : null;
-      if (!userId) return; // userId가 없으면 스킵
+      if (!userId) return;
 
       const memberInfo = companyMappingCache.get(userId);
 
       if (memberInfo?.memberType === '기존') {
-        existingUserIds.add(userId);
+        activeExistingUserIds.add(userId);
 
         if (memberInfo?.tenantType === '입주사(위메이드)') {
-          wemadeUserIds.add(userId);
+          activeWemadeUserIds.add(userId);
         } else if (memberInfo?.tenantType === '입주사(위메이드 외)') {
-          otherTenantUserIds.add(userId);
+          activeOtherTenantUserIds.add(userId);
         } else if (memberInfo?.tenantType === '비입주사') {
-          nonTenantUserIds.add(userId);
+          activeNonTenantUserIds.add(userId);
         }
       } else {
-        // 매칭 안된 회원은 신규로 간주
-        newUserIds.add(userId);
+        activeNewUserIds.add(userId);
       }
     });
 
-    const existingCount = existingUserIds.size;
-    const newCount = newUserIds.size;
-    const wemadeCount = wemadeUserIds.size;
-    const otherTenantCount = otherTenantUserIds.size;
-    const nonTenantCount = nonTenantUserIds.size;
-    const total = existingCount + newCount;
+    // 만료된 회원
+    const expiredExistingUserIds = new Set();
+    const expiredNewUserIds = new Set();
+    const expiredWemadeUserIds = new Set();
+    const expiredOtherTenantUserIds = new Set();
+    const expiredNonTenantUserIds = new Set();
+
+    expiredMembersQuery.rows.forEach(row => {
+      const userId = row.user_id ? String(row.user_id) : null;
+      if (!userId) return;
+
+      const memberInfo = companyMappingCache.get(userId);
+
+      if (memberInfo?.memberType === '기존') {
+        expiredExistingUserIds.add(userId);
+
+        if (memberInfo?.tenantType === '입주사(위메이드)') {
+          expiredWemadeUserIds.add(userId);
+        } else if (memberInfo?.tenantType === '입주사(위메이드 외)') {
+          expiredOtherTenantUserIds.add(userId);
+        } else if (memberInfo?.tenantType === '비입주사') {
+          expiredNonTenantUserIds.add(userId);
+        }
+      } else {
+        expiredNewUserIds.add(userId);
+      }
+    });
+
+    // 집계
+    const activeTotal = activeExistingUserIds.size + activeNewUserIds.size;
+    const expiredTotal = expiredExistingUserIds.size + expiredNewUserIds.size;
+
+    // 중복 제거: 유효와 만료 회원을 합친 후 unique user_id 카운트
+    const allUniqueUserIds = new Set([
+      ...activeExistingUserIds,
+      ...activeNewUserIds,
+      ...expiredExistingUserIds,
+      ...expiredNewUserIds
+    ]);
+    const allUniqueTotal = allUniqueUserIds.size;
+
+    // view에 따라 total 결정
+    // view=valid: 유효회원만 (기본)
+    // view=all: 중복제거된 전체 회원
+    const total = view === 'valid' ? activeTotal : allUniqueTotal;
+
+    console.log(`📊 세그먼트 집계 (${targetMonth}, view=${view}): 전체=${total}, 유효=${activeTotal}, 만료=${expiredTotal}`);
 
     res.json({
       success: true,
       data: {
+        month: targetMonth,
         total,
+        active: {
+          total: activeTotal,
+          percentage: total > 0 ? ((activeTotal / total) * 100).toFixed(1) : 0,
+          segments: {
+            existing: {
+              count: activeExistingUserIds.size,
+              percentage: activeTotal > 0 ? ((activeExistingUserIds.size / activeTotal) * 100).toFixed(1) : 0,
+              subSegments: {
+                wemade: {
+                  count: activeWemadeUserIds.size,
+                  percentage: activeExistingUserIds.size > 0 ? ((activeWemadeUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
+                },
+                otherTenant: {
+                  count: activeOtherTenantUserIds.size,
+                  percentage: activeExistingUserIds.size > 0 ? ((activeOtherTenantUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
+                },
+                nonTenant: {
+                  count: activeNonTenantUserIds.size,
+                  percentage: activeExistingUserIds.size > 0 ? ((activeNonTenantUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
+                }
+              }
+            },
+            new: {
+              count: activeNewUserIds.size,
+              percentage: activeTotal > 0 ? ((activeNewUserIds.size / activeTotal) * 100).toFixed(1) : 0
+            }
+          }
+        },
+        expired: {
+          total: expiredTotal,
+          percentage: total > 0 ? ((expiredTotal / total) * 100).toFixed(1) : 0,
+          segments: {
+            existing: {
+              count: expiredExistingUserIds.size,
+              percentage: expiredTotal > 0 ? ((expiredExistingUserIds.size / expiredTotal) * 100).toFixed(1) : 0,
+              subSegments: {
+                wemade: {
+                  count: expiredWemadeUserIds.size,
+                  percentage: expiredExistingUserIds.size > 0 ? ((expiredWemadeUserIds.size / expiredExistingUserIds.size) * 100).toFixed(1) : 0
+                },
+                otherTenant: {
+                  count: expiredOtherTenantUserIds.size,
+                  percentage: expiredExistingUserIds.size > 0 ? ((expiredOtherTenantUserIds.size / expiredExistingUserIds.size) * 100).toFixed(1) : 0
+                },
+                nonTenant: {
+                  count: expiredNonTenantUserIds.size,
+                  percentage: expiredExistingUserIds.size > 0 ? ((expiredNonTenantUserIds.size / expiredExistingUserIds.size) * 100).toFixed(1) : 0
+                }
+              }
+            },
+            new: {
+              count: expiredNewUserIds.size,
+              percentage: expiredTotal > 0 ? ((expiredNewUserIds.size / expiredTotal) * 100).toFixed(1) : 0
+            }
+          }
+        },
+        // 하위 호환성을 위해 기존 필드 유지 (유효 회원만)
         segments: {
           existing: {
-            count: existingCount,
-            percentage: total > 0 ? ((existingCount / total) * 100).toFixed(1) : 0,
+            count: activeExistingUserIds.size,
+            percentage: activeTotal > 0 ? ((activeExistingUserIds.size / activeTotal) * 100).toFixed(1) : 0,
             subSegments: {
               wemade: {
-                count: wemadeCount,
-                percentage: existingCount > 0 ? ((wemadeCount / existingCount) * 100).toFixed(1) : 0
+                count: activeWemadeUserIds.size,
+                percentage: activeExistingUserIds.size > 0 ? ((activeWemadeUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
               },
               otherTenant: {
-                count: otherTenantCount,
-                percentage: existingCount > 0 ? ((otherTenantCount / existingCount) * 100).toFixed(1) : 0
+                count: activeOtherTenantUserIds.size,
+                percentage: activeExistingUserIds.size > 0 ? ((activeOtherTenantUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
               },
               nonTenant: {
-                count: nonTenantCount,
-                percentage: existingCount > 0 ? ((nonTenantCount / existingCount) * 100).toFixed(1) : 0
+                count: activeNonTenantUserIds.size,
+                percentage: activeExistingUserIds.size > 0 ? ((activeNonTenantUserIds.size / activeExistingUserIds.size) * 100).toFixed(1) : 0
               }
             }
           },
           new: {
-            count: newCount,
-            percentage: total > 0 ? ((newCount / total) * 100).toFixed(1) : 0
+            count: activeNewUserIds.size,
+            percentage: activeTotal > 0 ? ((activeNewUserIds.size / activeTotal) * 100).toFixed(1) : 0
           }
         }
       }
@@ -542,6 +725,7 @@ app.get('/api/pangyo-segment-members/:segment', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const offset = (page - 1) * limit;
+    const searchTerm = req.query.search || '';
 
     const excludeConditions = `
       AND m.title NOT LIKE '%PT%'
@@ -580,7 +764,7 @@ app.get('/api/pangyo-segment-members/:segment', async (req, res) => {
     `);
 
     // 세그먼트별로 필터링
-    const filteredMembers = allMembersResult.rows.filter(row => {
+    let filteredMembers = allMembersResult.rows.filter(row => {
       const userId = row.user_id ? String(row.user_id) : null;
       const memberInfo = userId ? companyMappingCache.get(userId) : null;
 
@@ -599,6 +783,21 @@ app.get('/api/pangyo-segment-members/:segment', async (req, res) => {
       }
       return false;
     });
+
+    // 검색 필터 적용 (세그먼트 필터 이후, 페이지네이션 이전)
+    if (searchTerm.trim()) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filteredMembers = filteredMembers.filter(row => {
+        const userId = row.user_id ? String(row.user_id) : null;
+        const memberInfo = userId ? companyMappingCache.get(userId) : null;
+
+        const nameMatch = row.user_name && row.user_name.toLowerCase().includes(lowerSearchTerm);
+        const phoneMatch = row.user_phone && row.user_phone.includes(searchTerm);
+        const companyMatch = memberInfo?.companyName && memberInfo.companyName.toLowerCase().includes(lowerSearchTerm);
+
+        return nameMatch || phoneMatch || companyMatch;
+      });
+    }
 
     // 페이지네이션
     const totalCount = filteredMembers.length;
@@ -763,27 +962,116 @@ app.get('/api/dashboard-data', async (req, res) => {
       nextMonth.setDate(0); // 이전 달의 마지막 날
       const monthEnd = `${month}-${String(nextMonth.getDate()).padStart(2, '0')}`;
 
-      const membersQuery = await pool.query(`
+      // 현재 월 여부 확인
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const isCurrentMonth = month === currentMonth;
+
+      // 오픈월 특별 처리: 매출만 결제일 기준, 회원수는 유효회원 기준
+      // 10월, 11월은 오픈월로 결제일 기준으로 매출 계산
+      const isOpenMonth = month === '2025-10' || month === '2025-11';
+
+      // 회원수는 항상 유효회원 기준 (과거는 말일, 당월은 오늘)
+      const targetDate = isCurrentMonth
+        ? now.toISOString().split('T')[0]
+        : monthEnd;
+
+      // 회원수 조회 (유효회원 기준)
+      const membersCountQuery = await pool.query(`
         SELECT DISTINCT ON (m.id)
           m.id,
-          u.id as user_id,
-          o.total_price
+          u.id as user_id
         FROM b_class_bmembership m
         JOIN b_payment_btransaction t ON m.transaction_id = t.id
         JOIN b_payment_border o ON t.order_id = o.id
         LEFT JOIN user_user u ON o.user_id = u.id
         WHERE m.is_active = true
-          AND m.begin_date <= $2::date
+          AND m.begin_date <= $1::date
           AND m.end_date >= $1::date
           AND o.b_place_id = 26
           AND t.is_refund = false
           ${excludeConditions}
-      `, [monthStart, monthEnd]);
+      `, [targetDate]);
+
+      // 매출 조회 (오픈월은 결제일 기준, 다른 월은 유효회원의 매출)
+      let membersRevenueQuery, optionsQuery;
+      if (isOpenMonth) {
+        // 오픈월: 결제일 기준 매출
+        membersRevenueQuery = await pool.query(`
+          SELECT DISTINCT ON (m.id)
+            m.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_bmembership m
+          JOIN b_payment_btransaction t ON m.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE m.is_active = true
+            AND t.pay_date >= $1::date
+            AND t.pay_date <= $2::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+            ${excludeConditions}
+        `, [monthStart, monthEnd]);
+
+        // 옵션 상품도 결제일 기준
+        optionsQuery = await pool.query(`
+          SELECT DISTINCT ON (opt.id)
+            opt.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_boption opt
+          JOIN b_payment_btransaction t ON opt.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE opt.is_active = true
+            AND t.pay_date >= $1::date
+            AND t.pay_date <= $2::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+        `, [monthStart, monthEnd]);
+      } else {
+        // 다른 월: 유효회원의 매출
+        membersRevenueQuery = await pool.query(`
+          SELECT DISTINCT ON (m.id)
+            m.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_bmembership m
+          JOIN b_payment_btransaction t ON m.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE m.is_active = true
+            AND m.begin_date <= $1::date
+            AND m.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+            ${excludeConditions}
+        `, [targetDate]);
+
+        // 옵션 상품도 유효기간 기준
+        optionsQuery = await pool.query(`
+          SELECT DISTINCT ON (opt.id)
+            opt.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_boption opt
+          JOIN b_payment_btransaction t ON opt.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE opt.is_active = true
+            AND opt.begin_date <= $1::date
+            AND opt.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+        `, [targetDate]);
+      }
 
       // 법인별로 그룹화 (user_id 기준 unique 카운트)
       const companyData = new Map();
 
-      membersQuery.rows.forEach(row => {
+      // 1단계: 멤버십 회원수 집계 (유효회원 기준)
+      membersCountQuery.rows.forEach(row => {
         const userId = row.user_id ? String(row.user_id) : null;
         const memberInfo = userId ? companyMappingCache.get(userId) : null;
 
@@ -809,7 +1097,58 @@ app.get('/api/dashboard-data', async (req, res) => {
         if (userId) {
           data.userIds.add(userId);
         }
-        data.revenue += row.total_price || 0;
+      });
+
+      // 2단계: 멤버십 매출 추가
+      membersRevenueQuery.rows.forEach(row => {
+        const userId = row.user_id ? String(row.user_id) : null;
+        const memberInfo = userId ? companyMappingCache.get(userId) : null;
+        const companyName = memberInfo?.companyName || '미인증 회원';
+        const key = companyName;
+
+        // 해당 법인이 존재하면 매출 추가, 없으면 생성 (회원수는 0)
+        if (!companyData.has(key)) {
+          companyData.set(key, {
+            month,
+            company: companyName,
+            type: memberInfo?.companyName
+              ? (memberInfo?.memberType === '기존'
+                ? (memberInfo?.tenantType === '입주사(위메이드)' ? '기존_입주사_위메이드' :
+                   memberInfo?.tenantType === '입주사(위메이드 외)' ? '기존_입주사_위메이드외' : '기존_비입주사')
+                : '신규')
+              : '미인증',
+            userIds: new Set(),
+            revenue: 0
+          });
+        }
+        const data = companyData.get(key);
+        data.revenue += row.revenue || 0;
+      });
+
+      // 3단계: 옵션 매출 추가
+      optionsQuery.rows.forEach(row => {
+        const userId = row.user_id ? String(row.user_id) : null;
+        const memberInfo = userId ? companyMappingCache.get(userId) : null;
+        const companyName = memberInfo?.companyName || '미인증 회원';
+        const key = companyName;
+
+        // 해당 법인이 존재하면 매출 추가
+        if (!companyData.has(key)) {
+          companyData.set(key, {
+            month,
+            company: companyName,
+            type: memberInfo?.companyName
+              ? (memberInfo?.memberType === '기존'
+                ? (memberInfo?.tenantType === '입주사(위메이드)' ? '기존_입주사_위메이드' :
+                   memberInfo?.tenantType === '입주사(위메이드 외)' ? '기존_입주사_위메이드외' : '기존_비입주사')
+                : '신규')
+              : '미인증',
+            userIds: new Set(),
+            revenue: 0
+          });
+        }
+        const data = companyData.get(key);
+        data.revenue += row.revenue || 0;
       });
 
       // Set을 members 카운트로 변환
@@ -832,6 +1171,426 @@ app.get('/api/dashboard-data', async (req, res) => {
     });
   } catch (error) {
     console.error('Dashboard 데이터 조회 오류:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 멤버십 판매 현황 API
+app.get('/api/membership-sales', async (req, res) => {
+  try {
+    console.log('🎫 멤버십 판매 현황 조회 시작');
+
+    // 회원-법인 매핑 데이터 확인
+    if (companyMappingCache.size === 0) {
+      await fetchCompanyMappingData();
+    }
+
+    const excludeConditions = `
+      AND m.title NOT LIKE '%PT%'
+      AND m.title NOT LIKE '%개인레슨%'
+      AND m.title NOT LIKE '%프라이빗레슨%'
+      AND m.title NOT LIKE '%그룹레슨%'
+      AND m.title NOT LIKE '%1일%'
+      AND m.title NOT LIKE '%체험%'
+      AND m.title NOT LIKE '%골프락커%'
+      AND m.title NOT LIKE '%시설대관%'
+      AND m.title NOT LIKE '%제휴업체%'
+    `;
+
+    // 모든 멤버십 판매 데이터 조회 (월별로 그룹화할 수 있도록)
+    const query = `
+      SELECT DISTINCT ON (m.id)
+        m.id as membership_id,
+        m.title as product_name,
+        m.begin_date,
+        m.end_date,
+        t.pay_date,
+        o.total_price,
+        o.user_id,
+        u.id as user_id_check
+      FROM b_class_bmembership m
+      JOIN b_payment_btransaction t ON m.transaction_id = t.id
+      JOIN b_payment_border o ON t.order_id = o.id
+      LEFT JOIN user_user u ON o.user_id = u.id
+      WHERE m.is_active = true
+        AND o.b_place_id = 26
+        AND t.is_refund = false
+        AND t.pay_date IS NOT NULL
+        ${excludeConditions}
+      ORDER BY m.id, t.pay_date DESC
+    `;
+
+    const result = await pool.query(query);
+
+    // 월별, 법인별, 상품별로 집계
+    const salesByMonth = {};
+
+    result.rows.forEach(row => {
+      const payDate = new Date(row.pay_date);
+      const month = `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}`;
+
+      // 법인 정보 가져오기
+      const userMapping = companyMappingCache.get(String(row.user_id));
+      const companyName = userMapping?.companyName || '미인증';
+
+      // 월별 데이터 초기화
+      if (!salesByMonth[month]) {
+        salesByMonth[month] = {};
+      }
+
+      // 법인별 데이터 초기화
+      if (!salesByMonth[month][companyName]) {
+        salesByMonth[month][companyName] = {};
+      }
+
+      // 상품별 집계
+      const productName = row.product_name || '기타';
+      if (!salesByMonth[month][companyName][productName]) {
+        salesByMonth[month][companyName][productName] = {
+          count: 0,
+          amount: 0
+        };
+      }
+
+      salesByMonth[month][companyName][productName].count += 1;
+      salesByMonth[month][companyName][productName].amount += parseFloat(row.total_price || 0);
+    });
+
+    // 결과를 배열 형태로 변환
+    const salesData = [];
+    Object.keys(salesByMonth).forEach(month => {
+      Object.keys(salesByMonth[month]).forEach(company => {
+        Object.keys(salesByMonth[month][company]).forEach(product => {
+          const data = salesByMonth[month][company][product];
+          salesData.push({
+            month,
+            company,
+            product,
+            count: data.count,
+            amount: data.amount
+          });
+        });
+      });
+    });
+
+    // 월, 법인명, 상품명 순으로 정렬
+    salesData.sort((a, b) => {
+      if (a.month !== b.month) return b.month.localeCompare(a.month); // 최신 월 먼저
+      if (a.company !== b.company) return a.company.localeCompare(b.company);
+      return a.product.localeCompare(b.product);
+    });
+
+    console.log(`✅ 멤버십 판매 데이터 ${salesData.length}건 조회 완료`);
+
+    res.json({
+      success: true,
+      data: salesData
+    });
+
+  } catch (error) {
+    console.error('❌ 멤버십 판매 현황 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 콘텐츠 & 옵션 판매 현황 API
+app.get('/api/content-options-sales', async (req, res) => {
+  try {
+    console.log('🎯 콘텐츠 & 옵션 판매 현황 조회 시작');
+
+    // 회원-법인 매핑 데이터 확인
+    if (companyMappingCache.size === 0) {
+      await fetchCompanyMappingData();
+    }
+
+    // PT, 그룹레슨, 골프 등 부가 서비스 조회
+    const includeConditions = `
+      AND (
+        m.title LIKE '%PT%'
+        OR m.title LIKE '%개인레슨%'
+        OR m.title LIKE '%프라이빗레슨%'
+        OR m.title LIKE '%그룹레슨%'
+        OR m.title LIKE '%골프%'
+        OR m.title LIKE '%골프락커%'
+        OR m.title LIKE '%스쿼시%'
+      )
+    `;
+
+    // 멤버십에서 부가 서비스 조회
+    const membershipQuery = `
+      SELECT DISTINCT ON (m.id)
+        m.id as item_id,
+        m.title as product_name,
+        m.begin_date,
+        m.end_date,
+        t.pay_date,
+        o.total_price,
+        o.user_id,
+        u.id as user_id_check,
+        'membership' as item_type
+      FROM b_class_bmembership m
+      JOIN b_payment_btransaction t ON m.transaction_id = t.id
+      JOIN b_payment_border o ON t.order_id = o.id
+      LEFT JOIN user_user u ON o.user_id = u.id
+      WHERE m.is_active = true
+        AND o.b_place_id = 26
+        AND t.is_refund = false
+        AND t.pay_date IS NOT NULL
+        ${includeConditions}
+      ORDER BY m.id, t.pay_date DESC
+    `;
+
+    // 옵션 상품 조회 (락커, 운동복 등)
+    const optionQuery = `
+      SELECT DISTINCT ON (opt.id)
+        opt.id as item_id,
+        opt.title as product_name,
+        opt.begin_date,
+        opt.end_date,
+        t.pay_date,
+        o.total_price,
+        o.user_id,
+        u.id as user_id_check,
+        'option' as item_type
+      FROM b_class_boption opt
+      JOIN b_payment_btransaction t ON opt.transaction_id = t.id
+      JOIN b_payment_border o ON t.order_id = o.id
+      LEFT JOIN user_user u ON o.user_id = u.id
+      WHERE opt.is_active = true
+        AND o.b_place_id = 26
+        AND t.is_refund = false
+        AND t.pay_date IS NOT NULL
+      ORDER BY opt.id, t.pay_date DESC
+    `;
+
+    const [membershipResult, optionResult] = await Promise.all([
+      pool.query(membershipQuery),
+      pool.query(optionQuery)
+    ]);
+
+    // 두 결과를 합침
+    const result = {
+      rows: [...membershipResult.rows, ...optionResult.rows]
+    };
+
+    // 카테고리 분류 함수
+    function categorizeProduct(title) {
+      const lower = title.toLowerCase();
+      if (lower.includes('pt') || lower.includes('개인레슨') || lower.includes('프라이빗')) {
+        return 'PT/개인레슨';
+      } else if (lower.includes('그룹레슨')) {
+        return '그룹레슨';
+      } else if (lower.includes('골프') || lower.includes('골프락커')) {
+        return '골프';
+      } else if (lower.includes('스쿼시')) {
+        return '스쿼시';
+      } else if (lower.includes('락커')) {
+        return '락커';
+      } else if (lower.includes('운동복')) {
+        return '운동복';
+      } else if (lower.includes('수건')) {
+        return '수건';
+      } else if (lower.includes('샤워')) {
+        return '샤워용품';
+      }
+      return '기타';
+    }
+
+    // 월별, 법인별, 카테고리별, 상품별로 집계
+    const salesByMonth = {};
+
+    result.rows.forEach(row => {
+      const payDate = new Date(row.pay_date);
+      const month = `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}`;
+
+      // 법인 정보 가져오기
+      const userMapping = companyMappingCache.get(String(row.user_id));
+      const companyName = userMapping?.companyName || '미인증';
+
+      // 카테고리 분류
+      const category = categorizeProduct(row.product_name);
+
+      // 월별 데이터 초기화
+      if (!salesByMonth[month]) {
+        salesByMonth[month] = {};
+      }
+
+      // 카테고리별 데이터 초기화
+      if (!salesByMonth[month][category]) {
+        salesByMonth[month][category] = {
+          total: { count: 0, amount: 0 },
+          byCompany: {},
+          byProduct: {}
+        };
+      }
+
+      // 전체 집계
+      salesByMonth[month][category].total.count += 1;
+      salesByMonth[month][category].total.amount += parseFloat(row.total_price || 0);
+
+      // 법인별 집계
+      if (!salesByMonth[month][category].byCompany[companyName]) {
+        salesByMonth[month][category].byCompany[companyName] = { count: 0, amount: 0 };
+      }
+      salesByMonth[month][category].byCompany[companyName].count += 1;
+      salesByMonth[month][category].byCompany[companyName].amount += parseFloat(row.total_price || 0);
+
+      // 상품별 집계
+      const productName = row.product_name || '기타';
+      if (!salesByMonth[month][category].byProduct[productName]) {
+        salesByMonth[month][category].byProduct[productName] = { count: 0, amount: 0 };
+      }
+      salesByMonth[month][category].byProduct[productName].count += 1;
+      salesByMonth[month][category].byProduct[productName].amount += parseFloat(row.total_price || 0);
+    });
+
+    console.log(`✅ 콘텐츠 & 옵션 판매 데이터 조회 완료`);
+
+    res.json({
+      success: true,
+      data: salesByMonth
+    });
+
+  } catch (error) {
+    console.error('❌ 콘텐츠 & 옵션 판매 현황 조회 실패:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 전체 회원 리스트 API (회원별 그룹화, 모든 멤버십 표시)
+app.get('/api/pangyo-all-members', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    const searchTerm = req.query.search || '';
+
+    // 모든 멤버십 조회 (유효+만료, 필터 없음)
+    const allMembershipsQuery = await pool.query(`
+      SELECT
+        m.id as membership_id,
+        u.id as user_id,
+        u.name as user_name,
+        u.phone_number as user_phone,
+        m.title as membership_title,
+        m.begin_date,
+        m.end_date,
+        m.is_active,
+        o.total_price,
+        o.b_product_info,
+        'membership' as item_type
+      FROM b_class_bmembership m
+      JOIN b_payment_btransaction t ON m.transaction_id = t.id
+      JOIN b_payment_border o ON t.order_id = o.id
+      LEFT JOIN user_user u ON o.user_id = u.id
+      WHERE o.b_place_id = 26
+        AND t.is_refund = false
+        AND u.id IS NOT NULL
+      ORDER BY u.id, m.end_date DESC
+    `);
+
+    // 모든 옵션 상품 조회
+    const allOptionsQuery = await pool.query(`
+      SELECT
+        opt.id as membership_id,
+        u.id as user_id,
+        u.name as user_name,
+        u.phone_number as user_phone,
+        opt.title as membership_title,
+        opt.begin_date,
+        opt.end_date,
+        opt.is_active,
+        o.total_price,
+        o.b_product_info,
+        'option' as item_type
+      FROM b_class_boption opt
+      JOIN b_payment_btransaction t ON opt.transaction_id = t.id
+      JOIN b_payment_border o ON t.order_id = o.id
+      LEFT JOIN user_user u ON o.user_id = u.id
+      WHERE o.b_place_id = 26
+        AND t.is_refund = false
+        AND u.id IS NOT NULL
+      ORDER BY u.id, opt.end_date DESC
+    `);
+
+    // 회원별로 그룹화
+    const userMembershipsMap = new Map();
+    const now = new Date();
+
+    // 멤버십과 옵션 상품을 하나의 배열로 합치기
+    const allItems = [...allMembershipsQuery.rows, ...allOptionsQuery.rows];
+
+    allItems.forEach(row => {
+      const userId = row.user_id;
+      if (!userMembershipsMap.has(userId)) {
+        const memberInfo = companyMappingCache.get(String(userId));
+        userMembershipsMap.set(userId, {
+          userId,
+          userName: row.user_name,
+          userPhone: row.user_phone,
+          companyName: memberInfo?.companyName || null,
+          tenantType: memberInfo?.tenantType || null,
+          memberType: memberInfo?.memberType || '신규',
+          memberships: []
+        });
+      }
+
+      const endDate = new Date(row.end_date);
+      const isExpired = endDate < now;
+
+      userMembershipsMap.get(userId).memberships.push({
+        membershipId: row.membership_id,
+        title: row.membership_title,
+        beginDate: row.begin_date,
+        endDate: row.end_date,
+        isExpired,
+        totalPrice: row.total_price || 0,
+        type: row.item_type  // 'membership' or 'option'
+      });
+    });
+
+    // Map을 배열로 변환
+    let allUsers = Array.from(userMembershipsMap.values());
+
+    // 검색 필터 적용
+    if (searchTerm.trim()) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      allUsers = allUsers.filter(user => {
+        const nameMatch = user.userName && user.userName.toLowerCase().includes(lowerSearchTerm);
+        const phoneMatch = user.userPhone && user.userPhone.includes(searchTerm);
+        const companyMatch = user.companyName && user.companyName.toLowerCase().includes(lowerSearchTerm);
+        return nameMatch || phoneMatch || companyMatch;
+      });
+    }
+
+    // 페이지네이션
+    const totalCount = allUsers.length;
+    const totalPages = Math.ceil(totalCount / limit);
+    const paginatedUsers = allUsers.slice(offset, offset + limit);
+
+    res.json({
+      success: true,
+      data: {
+        members: paginatedUsers,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalCount,
+          limit
+        }
+      }
+    });
+  } catch (error) {
+    console.error('전체 회원 리스트 조회 오류:', error);
     res.status(500).json({
       success: false,
       error: error.message

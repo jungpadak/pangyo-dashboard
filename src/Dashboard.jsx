@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, ChevronDown, ChevronRight, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, TrendingUp, X } from 'lucide-react';
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart } from 'recharts';
 
 // 더미 데이터 - 전체 기간으로 확장
@@ -164,40 +164,6 @@ const rawData = [
   {month: '2024-10', company: 'B2C 개인회원', type: '신규_B2C', members: 192, revenue: 15249316}
 ];
 
-// 멤버십 상품 더미 데이터
-const membershipData = [
-  {month: '2024-10', company: '위메이드', product: '1개월 구독권', count: 80, amount: 6400000},
-  {month: '2024-10', company: '위메이드', product: '6개월 이용권', count: 100, amount: 11000000},
-  {month: '2024-10', company: '위메이드', product: '12개월 이용권', count: 85, amount: 8835000},
-  {month: '2024-10', company: '크래프톤', product: '1개월 구독권', count: 50, amount: 4000000},
-  {month: '2024-10', company: '크래프톤', product: '6개월 이용권', count: 70, amount: 7700000},
-  {month: '2024-10', company: '크래프톤', product: '12개월 이용권', count: 42, amount: 4368000},
-  {month: '2024-10', company: '넥슨코리아', product: '1개월 구독권', count: 45, amount: 3600000},
-  {month: '2024-10', company: '넥슨코리아', product: '6개월 이용권', count: 65, amount: 7150000},
-  {month: '2024-10', company: '넥슨코리아', product: '12개월 이용권', count: 46, amount: 4784000},
-  {month: '2024-10', company: 'B2C 개인회원', product: '1개월 구독권', count: 120, amount: 9600000},
-  {month: '2024-10', company: 'B2C 개인회원', product: '6개월 이용권', count: 50, amount: 5500000},
-  {month: '2024-10', company: 'B2C 개인회원', product: '12개월 이용권', count: 22, amount: 2288000},
-];
-
-// 콘텐츠 & 옵션 더미 데이터
-const contentData = [
-  {month: '2024-10', company: '위메이드', product: 'PT 10회', count: 30, amount: 2400000},
-  {month: '2024-10', company: '위메이드', product: 'PT 20회', count: 15, amount: 1650000},
-  {month: '2024-10', company: '위메이드', product: 'PT 30회', count: 8, amount: 1040000},
-  {month: '2024-10', company: '위메이드', product: '스쿼시', count: 8, amount: 480000},
-  {month: '2024-10', company: 'B2C 개인회원', product: 'PT 10회', count: 40, amount: 3200000},
-  {month: '2024-10', company: 'B2C 개인회원', product: 'PT 20회', count: 22, amount: 2420000},
-  {month: '2024-10', company: 'B2C 개인회원', product: 'PT 30회', count: 12, amount: 1560000},
-  {month: '2024-10', company: 'B2C 개인회원', product: '골프', count: 12, amount: 1440000},
-  {month: '2024-10', company: 'B2C 개인회원', product: '1일권', count: 35, amount: 525000},
-  {month: '2024-10', company: '크래프톤', product: 'PT 10회', count: 18, amount: 1440000},
-  {month: '2024-10', company: '크래프톤', product: '스쿼시', count: 5, amount: 300000},
-  {month: '2024-10', company: '넥슨코리아', product: 'PT 10회', count: 22, amount: 1760000},
-  {month: '2024-10', company: '넥슨코리아', product: 'PT 20회', count: 10, amount: 1100000},
-  {month: '2024-10', company: '넥슨코리아', product: 'PT 30회', count: 5, amount: 650000},
-];
-
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [sortConfig, setSortConfig] = useState({ key: 'monthChangePercent', direction: 'asc' });
@@ -226,24 +192,35 @@ const Dashboard = () => {
   const [realData, setRealData] = useState(null);
   const [dashboardData, setDashboardData] = useState([]);
   const [segmentData, setSegmentData] = useState(null);
+  const [membershipData, setMembershipData] = useState([]);
+  const [contentOptionsData, setContentOptionsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(null);
 
   // API에서 실제 데이터 가져오기
+  // 초기 데이터 로드
   useEffect(() => {
     Promise.all([
       fetch('/api/dashboard-data').then(res => res.json()),
       fetch('/api/company-stats').then(res => res.json()),
-      fetch('/api/pangyo-segments').then(res => res.json())
+      fetch('/api/membership-sales').then(res => res.json()),
+      fetch('/api/content-options-sales').then(res => res.json())
     ])
-      .then(([dashboardRes, companyRes, segmentRes]) => {
+      .then(([dashboardRes, companyRes, membershipRes, contentRes]) => {
         if (dashboardRes.success) {
           setDashboardData(dashboardRes.data);
+          // 최신 월을 기본값으로 설정
+          const months = [...new Set(dashboardRes.data.map(d => d.month))].sort();
+          setSelectedMonth(months[months.length - 1]);
         }
         if (companyRes.success) {
           setRealData(companyRes.data);
         }
-        if (segmentRes.success) {
-          setSegmentData(segmentRes.data);
+        if (membershipRes.success) {
+          setMembershipData(membershipRes.data);
+        }
+        if (contentRes.success) {
+          setContentOptionsData(contentRes.data);
         }
         setLoading(false);
       })
@@ -252,32 +229,54 @@ const Dashboard = () => {
         setLoading(false);
       });
   }, []);
+
+  // selectedMonth가 변경될 때마다 세그먼트 데이터 재조회
+  useEffect(() => {
+    if (!selectedMonth) return;
+
+    fetch(`/api/pangyo-segments?month=${selectedMonth}`)
+      .then(res => res.json())
+      .then(segmentRes => {
+        if (segmentRes.success) {
+          setSegmentData(segmentRes.data);
+        }
+      })
+      .catch(error => {
+        console.error('세그먼트 데이터 로드 실패:', error);
+      });
+  }, [selectedMonth]);
   
   const processedData = useMemo(() => {
     // 로딩 중이거나 데이터가 없으면 null 반환
-    if (loading || dashboardData.length === 0 || !segmentData) {
+    if (loading || dashboardData.length === 0 || !segmentData || !selectedMonth) {
       return null;
     }
 
     const dataToUse = dashboardData;
 
     const months = [...new Set(dataToUse.map(d => d.month))].sort();
-    const latestMonth = months[months.length - 1];
-    const previousMonth = months[months.length - 2];
+    const currentMonthIndex = months.indexOf(selectedMonth);
+    const previousMonth = currentMonthIndex > 0 ? months[currentMonthIndex - 1] : null;
 
-    const latestData = dataToUse.filter(d => d.month === latestMonth);
-    const previousData = dataToUse.filter(d => d.month === previousMonth);
+    const latestData = dataToUse.filter(d => d.month === selectedMonth);
+    const previousData = previousMonth ? dataToUse.filter(d => d.month === previousMonth) : [];
 
-    // segmentData에서 실제 전체 회원 수 가져오기
-    const totalMembers = segmentData.total;
+    // ⚠️ 중요: 회원 수는 segmentData를 사용 (정확한 unique user_id 카운트)
+    // dashboardData는 법인별 합계이므로 중복 가능성이 있음
+    const totalMembers = segmentData?.total || 0;
     const totalRevenue = latestData.reduce((sum, d) => sum + d.revenue, 0);
 
-    // 전월 회원 수는 계산 (API에서 가져올 수 없음)
+    // 전월 회원 수 및 매출 계산 (dashboardData 기반)
     const prevTotalMembers = previousData.reduce((sum, d) => sum + d.members, 0);
     const prevTotalRevenue = previousData.reduce((sum, d) => sum + d.revenue, 0);
 
     const memberChange = totalMembers - prevTotalMembers;
     const revenueChange = totalRevenue - prevTotalRevenue;
+
+    // 데이터 일관성 검증
+    const dashboardCalculatedMembers = latestData.reduce((sum, d) => sum + d.members, 0);
+    const dataDiscrepancy = Math.abs(totalMembers - dashboardCalculatedMembers);
+    const hasDataIssue = dataDiscrepancy > 5; // 5명 이상 차이나면 경고
     
     const corporateMembers = latestData
       .filter(d => d.type !== '신규_B2C')
@@ -380,30 +379,38 @@ const Dashboard = () => {
       companyAnalysis: sortedCompanies,
       companyHierarchy,
       hierarchyData,
-      latestMonth,
+      latestMonth: selectedMonth,
       previousMonth,
       riskList: companyAnalysis.filter(c => c.status === '🔴'),
-      totalHistory
+      totalHistory,
+      availableMonths: months,
+      hasDataIssue,
+      dataDiscrepancy,
+      dashboardCalculatedMembers
     };
-  }, [dashboardData, sortConfig, loading, segmentData]);
+  }, [dashboardData, sortConfig, loading, segmentData, selectedMonth]);
+
+  const handlePrevMonth = () => {
+    if (!processedData) return;
+    const currentIndex = processedData.availableMonths.indexOf(selectedMonth);
+    if (currentIndex > 0) {
+      setSelectedMonth(processedData.availableMonths[currentIndex - 1]);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (!processedData) return;
+    const currentIndex = processedData.availableMonths.indexOf(selectedMonth);
+    if (currentIndex < processedData.availableMonths.length - 1) {
+      setSelectedMonth(processedData.availableMonths[currentIndex + 1]);
+    }
+  };
 
   const handleSort = (key) => {
     setSortConfig(prev => ({
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
     }));
-  };
-
-  const downloadCSV = () => {
-    const headers = ['월', '법인명', '유형', '회원수', '매출'];
-    const rows = rawData.map(d => [d.month, d.company, d.type, d.members, d.revenue]);
-    
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Butfit_판교벤처타운_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
   };
 
   const toggleCategory = (category) => {
@@ -425,54 +432,47 @@ const Dashboard = () => {
   const AllCompanyTrendChart = ({ companies, totalHistory }) => {
     if (!companies || companies.length === 0) return null;
 
-    // 모든 법인의 추이 데이터 분석
-    const analyzedCompanies = companies.map(company => {
-      const history = company.history;
-      const startValue = history[0].members;
-      const endValue = history[history.length - 1].members;
-      const totalChange = ((endValue - startValue) / startValue) * 100;
-      
-      const recentHistory = history.slice(-3);
-      const recentTrend = recentHistory.map((h, i) => i === 0 ? 0 : h.members - recentHistory[i-1].members);
-      
-      return {
-        ...company,
-        totalChange,
-        trend: totalChange < -5 ? 'decrease' : totalChange > 5 ? 'increase' : 'stable'
-      };
-    });
+    // 전월 대비 증감 계산
+    const companyChanges = companies
+      .filter(c => c.history && c.history.length >= 2)
+      .map(company => {
+        const latestIdx = company.history.length - 1;
+        const latest = company.history[latestIdx]?.members || 0;
+        const previous = company.history[latestIdx - 1]?.members || 0;
+        const change = latest - previous;
+        return {
+          name: company.name,
+          latest,
+          previous,
+          change
+        };
+      })
+      .filter(c => c.change !== 0); // 변화 없는 법인 제외
 
-    const decreasingCompanies = analyzedCompanies.filter(c => c.trend === 'decrease');
-    const increasingCompanies = analyzedCompanies.filter(c => c.trend === 'increase');
-    const stableCompanies = analyzedCompanies.filter(c => c.trend === 'stable');
+    // 급증/급감 법인 찾기
+    const topIncrease = companyChanges
+      .filter(c => c.change > 0)
+      .sort((a, b) => b.change - a.change)
+      .slice(0, 3);
 
-    // Recharts용 데이터 포맷
-    const chartData = totalHistory.map((h, idx) => {
-      const dataPoint = {
-        month: h.month.slice(2),
-        Total: h.members
-      };
-      
-      // 각 법인의 데이터 추가
-      [...decreasingCompanies, ...increasingCompanies].slice(0, 5).forEach(company => {
-        if (company.history[idx]) {
-          dataPoint[company.name] = company.history[idx].members;
-        }
-      });
-      
-      return dataPoint;
-    });
+    const topDecrease = companyChanges
+      .filter(c => c.change < 0)
+      .sort((a, b) => a.change - b.change)
+      .slice(0, 3);
+
+    // Recharts용 데이터 포맷 (막대 그래프만)
+    const chartData = totalHistory.map(h => ({
+      month: h.month.slice(2),
+      '전체 회원': h.members
+    }));
 
     return (
       <div className="p-6">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">전체 회원 추이 (Total) 및 주요 법인 현황</h3>
+            <h3 className="text-lg font-semibold text-gray-900">법인별 회원 증감 현황</h3>
             <p className="text-sm text-gray-500 mt-1">
-              총 {companies.length}개 법인 · 
-              <span className="text-red-600 font-medium ml-2">감소 {decreasingCompanies.length}개</span>
-              <span className="text-green-600 font-medium ml-2">증가 {increasingCompanies.length}개</span>
-              <span className="text-gray-600 font-medium ml-2">안정 {stableCompanies.length}개</span>
+              법인별 클릭하거나 추이 아이콘을 클릭하여 전체 기간 조이 를 확인할 수 있습니다
             </p>
           </div>
         </div>
@@ -482,31 +482,22 @@ const Dashboard = () => {
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis 
-                yAxisId="left"
-                tick={{ fontSize: 11 }} 
+              <YAxis
+                tick={{ fontSize: 11 }}
                 tickFormatter={(value) => value.toLocaleString()}
                 label={{ value: '회원수 (명)', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
               />
-              <YAxis 
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 11 }} 
-                tickFormatter={(value) => value.toLocaleString()}
-              />
-              <Tooltip 
+              <Tooltip
                 formatter={(value, name) => [value.toLocaleString() + '명', name]}
                 contentStyle={{ fontSize: 12 }}
               />
-              <Legend 
+              <Legend
                 wrapperStyle={{ fontSize: 11 }}
-                iconType="line"
               />
-              
-              {/* Total은 막대그래프 */}
+
+              {/* 전체 회원은 막대그래프 */}
               <Bar
-                yAxisId="right"
-                dataKey="Total"
+                dataKey="전체 회원"
                 fill="url(#colorTotal)"
                 fillOpacity={0.8}
                 radius={[8, 8, 0, 0]}
@@ -518,87 +509,52 @@ const Dashboard = () => {
                   <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.4}/>
                 </linearGradient>
               </defs>
-
-              {/* 감소 법인들 - 굵은 빨간 선 */}
-              {decreasingCompanies.slice(0, 3).map((company, idx) => (
-                <Line
-                  key={`decrease-${idx}`}
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey={company.name}
-                  stroke="#dc2626"
-                  strokeWidth={3.5}
-                  dot={{ fill: '#dc2626', strokeWidth: 2, r: 5 }}
-                  activeDot={{ r: 7, fill: '#dc2626' }}
-                />
-              ))}
-
-              {/* 증가 법인들 - 초록 선 */}
-              {increasingCompanies.slice(0, 2).map((company, idx) => (
-                <Line
-                  key={`increase-${idx}`}
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey={company.name}
-                  stroke="#059669"
-                  strokeWidth={3}
-                  dot={{ fill: '#059669', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, fill: '#059669' }}
-                />
-              ))}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        {/* 범례 */}
-        <div className="flex gap-6 mt-4 text-sm flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-3 bg-blue-300 opacity-60 rounded"></div>
-            <span className="text-gray-600 font-medium">Total (막대그래프)</span>
+        {/* 급증/급감 법인 요약 */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          {/* 급증 법인 */}
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">📈</span>
+              <h4 className="font-semibold text-green-900">이번 달 급증 법인</h4>
+            </div>
+            {topIncrease.length > 0 ? (
+              <div className="space-y-2">
+                {topIncrease.map((c, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-green-800">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="font-semibold">+{c.change}명</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-green-700 text-xs">급증한 법인이 없습니다</p>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-0.5 bg-red-500"></div>
-            <span className="text-gray-600">감소 추세 법인 (꺾은선)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-0.5 bg-green-500"></div>
-            <span className="text-gray-600">증가 추세 법인 (꺾은선)</span>
+
+          {/* 급감 법인 */}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">📉</span>
+              <h4 className="font-semibold text-red-900">이번 달 급감 법인</h4>
+            </div>
+            {topDecrease.length > 0 ? (
+              <div className="space-y-2">
+                {topDecrease.map((c, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-red-800">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="font-semibold">{c.change}명</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-red-700 text-xs">급감한 법인이 없습니다</p>
+            )}
           </div>
         </div>
-
-        {/* 감소 법인 상세 */}
-        {decreasingCompanies.length > 0 && (
-          <div className="mt-6 bg-red-50 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-red-800 mb-2">⚠️ 감소 추세 법인 상세</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {decreasingCompanies.map((company, idx) => (
-                <div key={idx} className="text-sm">
-                  <span className="font-medium text-red-900">{company.name}</span>
-                  <span className="text-red-700 ml-2">
-                    {company.totalChange.toFixed(1)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 증가 법인 상세 */}
-        {increasingCompanies.length > 0 && (
-          <div className="mt-4 bg-green-50 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-green-800 mb-2">📈 증가 추세 법인 상세</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {increasingCompanies.map((company, idx) => (
-                <div key={idx} className="text-sm">
-                  <span className="font-medium text-green-900">{company.name}</span>
-                  <span className="text-green-700 ml-2">
-                    +{company.totalChange.toFixed(1)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -606,13 +562,23 @@ const Dashboard = () => {
   const TrendModal = ({ company, onClose }) => {
     if (!company) return null;
 
-    const members = company.history.map(h => h.members);
+    // 월별로 그룹화 (중복 제거)
+    const monthlyData = new Map();
+    company.history.forEach(h => {
+      const monthKey = h.month;
+      if (!monthlyData.has(monthKey) || monthlyData.get(monthKey).members < h.members) {
+        monthlyData.set(monthKey, h);
+      }
+    });
+
+    const uniqueHistory = Array.from(monthlyData.values()).sort((a, b) => a.month.localeCompare(b.month));
+    const members = uniqueHistory.map(h => h.members);
     const maxMembers = Math.max(...members);
     const minMembers = Math.min(...members);
 
-    // Recharts용 데이터
-    const chartData = company.history.map(h => ({
-      month: h.month.slice(5),
+    // Recharts용 데이터 - YY-MM 형식으로 표시
+    const chartData = uniqueHistory.map(h => ({
+      month: h.month.slice(2),  // "2025-10" -> "25-10"
       members: h.members
     }));
 
@@ -758,6 +724,12 @@ const Dashboard = () => {
 
     // 기존 카테고리
     const existingCompanies = [...hierarchy.existing.wemade, ...hierarchy.existing.wemadeOther, ...hierarchy.existing.nonResident];
+    const existingMonthChange = existingCompanies.reduce((sum, c) => sum + c.monthChange, 0);
+    const existingQuarterChange = existingCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
+    const existingTotalMembers = existingCompanies.reduce((sum, c) => sum + c.members, 0);
+    const existingMonthChangePercent = existingTotalMembers > 0 ? (existingMonthChange / (existingTotalMembers - existingMonthChange)) * 100 : 0;
+    const existingStatus = existingMonthChange >= 0 ? '🟢' : existingMonthChangePercent < -10 ? '🔴' : '🟡';
+
     rows.push(
       <tr key="existing" className="bg-gray-100 hover:bg-gray-200 cursor-pointer font-bold" onClick={() => toggleCompanyCategory('existing')}>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -768,12 +740,45 @@ const Dashboard = () => {
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
-          {existingCompanies.reduce((sum, c) => sum + c.members, 0).toLocaleString()}명
+          {existingTotalMembers.toLocaleString()}명
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
+        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+          existingMonthChange > 0 ? 'text-green-600' : existingMonthChange < 0 ? 'text-red-600' : 'text-gray-500'
+        }`}>
+          {existingMonthChange > 0 ? '+' : ''}{existingMonthChange}명
+          <span className="text-xs ml-1">
+            ({existingMonthChangePercent > 0 ? '+' : ''}{existingMonthChangePercent.toFixed(1)}%)
+          </span>
+        </td>
+        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+          existingQuarterChange > 0 ? 'text-green-600' : existingQuarterChange < 0 ? 'text-red-600' : 'text-gray-500'
+        }`}>
+          {existingQuarterChange > 0 ? '+' : ''}{existingQuarterChange}명
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-center text-2xl">
+          {existingStatus}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // 기존 회원사 전체의 월별 합계 계산
+              const monthlyTotals = new Map();
+              dashboardData.forEach(d => {
+                if (d.type.startsWith('기존_')) {
+                  const current = monthlyTotals.get(d.month) || { month: d.month, members: 0 };
+                  current.members += d.members;
+                  monthlyTotals.set(d.month, current);
+                }
+              });
+              const aggregatedHistory = Array.from(monthlyTotals.values()).sort((a, b) => a.month.localeCompare(b.month));
+              setSelectedCompany({ name: '기존 회원사', history: aggregatedHistory });
+            }}
+            className="text-blue-600 hover:text-blue-800 hover:scale-125 transition-all duration-200 p-1 rounded-lg hover:bg-blue-50"
+          >
+            <TrendingUp size={20} />
+          </button>
+        </td>
       </tr>
     );
 
@@ -976,6 +981,12 @@ const Dashboard = () => {
 
     // 신규 회원사 카테고리 (하위 계층 없이 단순화)
     const newCompanies = hierarchy.new;
+    const newMonthChange = newCompanies.reduce((sum, c) => sum + c.monthChange, 0);
+    const newQuarterChange = newCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
+    const newTotalMembers = newCompanies.reduce((sum, c) => sum + c.members, 0);
+    const newMonthChangePercent = newTotalMembers > 0 ? (newMonthChange / (newTotalMembers - newMonthChange)) * 100 : 0;
+    const newStatus = newMonthChange >= 0 ? '🟢' : newMonthChangePercent < -10 ? '🔴' : '🟡';
+
     rows.push(
       <tr key="new" className="bg-gray-100 hover:bg-gray-200 cursor-pointer font-bold" onClick={() => toggleCompanyCategory('new')}>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -986,12 +997,45 @@ const Dashboard = () => {
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
-          {newCompanies.reduce((sum, c) => sum + c.members, 0).toLocaleString()}명
+          {newTotalMembers.toLocaleString()}명
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
-        <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
+        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+          newMonthChange > 0 ? 'text-green-600' : newMonthChange < 0 ? 'text-red-600' : 'text-gray-500'
+        }`}>
+          {newMonthChange > 0 ? '+' : ''}{newMonthChange}명
+          <span className="text-xs ml-1">
+            ({newMonthChangePercent > 0 ? '+' : ''}{newMonthChangePercent.toFixed(1)}%)
+          </span>
+        </td>
+        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+          newQuarterChange > 0 ? 'text-green-600' : newQuarterChange < 0 ? 'text-red-600' : 'text-gray-500'
+        }`}>
+          {newQuarterChange > 0 ? '+' : ''}{newQuarterChange}명
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-center text-2xl">
+          {newStatus}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // 신규 회원사 전체의 월별 합계 계산
+              const monthlyTotals = new Map();
+              dashboardData.forEach(d => {
+                if (d.type === '신규') {
+                  const current = monthlyTotals.get(d.month) || { month: d.month, members: 0 };
+                  current.members += d.members;
+                  monthlyTotals.set(d.month, current);
+                }
+              });
+              const aggregatedHistory = Array.from(monthlyTotals.values()).sort((a, b) => a.month.localeCompare(b.month));
+              setSelectedCompany({ name: '신규 회원사', history: aggregatedHistory });
+            }}
+            className="text-blue-600 hover:text-blue-800 hover:scale-125 transition-all duration-200 p-1 rounded-lg hover:bg-blue-50"
+          >
+            <TrendingUp size={20} />
+          </button>
+        </td>
       </tr>
     );
 
@@ -1044,6 +1088,12 @@ const Dashboard = () => {
     // 미인증 회원 카테고리
     const unverifiedMembers = hierarchy.unverified;
     if (unverifiedMembers.length > 0) {
+      const unverifiedMonthChange = unverifiedMembers.reduce((sum, c) => sum + c.monthChange, 0);
+      const unverifiedQuarterChange = unverifiedMembers.reduce((sum, c) => sum + c.quarterChange, 0);
+      const unverifiedTotalMembers = unverifiedMembers.reduce((sum, c) => sum + c.members, 0);
+      const unverifiedMonthChangePercent = unverifiedTotalMembers > 0 ? (unverifiedMonthChange / (unverifiedTotalMembers - unverifiedMonthChange)) * 100 : 0;
+      const unverifiedStatus = unverifiedMonthChange >= 0 ? '🟢' : unverifiedMonthChangePercent < -10 ? '🔴' : '🟡';
+
       rows.push(
         <tr key="unverified" className="bg-gray-100 hover:bg-gray-200 cursor-pointer font-bold" onClick={() => toggleCompanyCategory('unverified')}>
           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1054,12 +1104,45 @@ const Dashboard = () => {
           </td>
           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
-            {unverifiedMembers.reduce((sum, c) => sum + c.members, 0).toLocaleString()}명
+            {unverifiedTotalMembers.toLocaleString()}명
           </td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">-</td>
-          <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
-          <td className="px-6 py-4 whitespace-nowrap text-center">-</td>
+          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+            unverifiedMonthChange > 0 ? 'text-green-600' : unverifiedMonthChange < 0 ? 'text-red-600' : 'text-gray-500'
+          }`}>
+            {unverifiedMonthChange > 0 ? '+' : ''}{unverifiedMonthChange}명
+            <span className="text-xs ml-1">
+              ({unverifiedMonthChangePercent > 0 ? '+' : ''}{unverifiedMonthChangePercent.toFixed(1)}%)
+            </span>
+          </td>
+          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+            unverifiedQuarterChange > 0 ? 'text-green-600' : unverifiedQuarterChange < 0 ? 'text-red-600' : 'text-gray-500'
+          }`}>
+            {unverifiedQuarterChange > 0 ? '+' : ''}{unverifiedQuarterChange}명
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-center text-2xl">
+            {unverifiedStatus}
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-center">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // 미인증 회원 전체의 월별 합계 계산
+                const monthlyTotals = new Map();
+                dashboardData.forEach(d => {
+                  if (d.type === '미인증') {
+                    const current = monthlyTotals.get(d.month) || { month: d.month, members: 0 };
+                    current.members += d.members;
+                    monthlyTotals.set(d.month, current);
+                  }
+                });
+                const aggregatedHistory = Array.from(monthlyTotals.values()).sort((a, b) => a.month.localeCompare(b.month));
+                setSelectedCompany({ name: '미인증 회원', history: aggregatedHistory });
+              }}
+              className="text-blue-600 hover:text-blue-800 hover:scale-125 transition-all duration-200 p-1 rounded-lg hover:bg-blue-50"
+            >
+              <TrendingUp size={20} />
+            </button>
+          </td>
         </tr>
       );
 
@@ -1134,15 +1217,36 @@ const Dashboard = () => {
             <h1 className="text-4xl font-bold text-gray-900 mb-2">
               Butfit 판교벤처타운
             </h1>
-            <p className="text-gray-600 text-lg">법인회원 관리 대시보드 · 기준: {processedData.latestMonth}</p>
+            <div>
+              <div className="flex items-center gap-4">
+                <p className="text-gray-600 text-lg">법인회원 관리 대시보드</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePrevMonth}
+                    disabled={!processedData || processedData.availableMonths.indexOf(selectedMonth) === 0}
+                    className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <span className="text-lg font-semibold text-gray-900 min-w-[100px] text-center">
+                    {processedData.latestMonth}
+                  </span>
+                  <button
+                    onClick={handleNextMonth}
+                    disabled={!processedData || processedData.availableMonths.indexOf(selectedMonth) === processedData.availableMonths.length - 1}
+                    className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+              </div>
+              {selectedMonth === '2025-10' && (
+                <p className="text-sm text-amber-600 mt-1">
+                  ※ 오픈월 특성상 결제일 기준으로 표시됩니다 (11월 시작 사전판매 포함)
+                </p>
+              )}
+            </div>
           </div>
-          <button
-            onClick={downloadCSV}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 hover:shadow-md transition-all duration-200 font-medium"
-          >
-            <Download size={20} />
-            CSV 다운로드
-          </button>
         </div>
 
         {/* 탭 */}
@@ -1156,16 +1260,6 @@ const Dashboard = () => {
             }`}
           >
             전체 현황
-          </button>
-          <button
-            onClick={() => setActiveTab('hierarchy')}
-            className={`px-6 py-3 font-medium rounded-lg transition-all duration-200 ${
-              activeTab === 'hierarchy'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-white text-gray-600 hover:bg-gray-50 hover:shadow-sm'
-            }`}
-          >
-            계층별 분석
           </button>
           <button
             onClick={() => setActiveTab('membership')}
@@ -1216,6 +1310,38 @@ const Dashboard = () => {
                 gradient={processedData.riskCompanies > 0 ? "bg-red-600" : "bg-gray-700"}
               />
             </div>
+
+            {/* 데이터 일관성 경고 */}
+            {processedData.hasDataIssue && (
+              <div className="bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-6 mb-8 shadow">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
+                      <span className="text-2xl">⚠️</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-yellow-800 mb-2">데이터 불일치 감지</h3>
+                    <p className="text-sm text-yellow-700 mb-3">
+                      대시보드와 회원관리 탭의 회원 수가 일치하지 않습니다. ({processedData.dataDiscrepancy}명 차이)
+                    </p>
+                    <div className="bg-white/60 rounded-lg p-4 text-sm space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-yellow-900 font-medium">회원관리 (정확한 카운트):</span>
+                        <span className="font-bold text-yellow-900">{processedData.totalMembers.toLocaleString()}명</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-yellow-700">대시보드 합계:</span>
+                        <span className="text-yellow-700">{processedData.dashboardCalculatedMembers.toLocaleString()}명</span>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-yellow-200 text-xs text-yellow-600">
+                        현재 "총 유효회원"은 회원관리 탭과 동일한 정확한 값을 표시합니다.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 알림 */}
             {processedData.riskCompanies > 0 && (
@@ -1320,117 +1446,11 @@ const Dashboard = () => {
           </>
         )}
 
-        {activeTab === 'hierarchy' && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">계층별 회원 및 매출 현황</h2>
-              <p className="text-sm text-gray-500 mt-1">카테고리를 클릭하여 펼치거나 접을 수 있습니다</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">구분</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">회원수</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">매출</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  <HierarchyRow
-                    label="기존"
-                    members={
-                      processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.members, 0) +
-                      processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.members, 0) +
-                      processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.members, 0)
-                    }
-                    revenue={
-                      processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.revenue, 0) +
-                      processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.revenue, 0) +
-                      processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.revenue, 0)
-                    }
-                    level={0}
-                    category="existing"
-                    isExpanded={expandedCategories.existing}
-                  />
-                  {expandedCategories.existing && (
-                    <>
-                      <HierarchyRow
-                        label="위메이드"
-                        data={processedData.hierarchyData.existing.wemade}
-                        members={processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.members, 0)}
-                        revenue={processedData.hierarchyData.existing.wemade.reduce((s, d) => s + d.revenue, 0)}
-                        level={1}
-                        category="wemade"
-                        isExpanded={expandedCategories.wemade}
-                      />
-                      <HierarchyRow
-                        label="위메이드 외"
-                        data={processedData.hierarchyData.existing.wemadeOther}
-                        members={processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.members, 0)}
-                        revenue={processedData.hierarchyData.existing.wemadeOther.reduce((s, d) => s + d.revenue, 0)}
-                        level={1}
-                        category="wemadeOther"
-                        isExpanded={expandedCategories.wemadeOther}
-                      />
-                      <HierarchyRow
-                        label="비입주사"
-                        data={processedData.hierarchyData.existing.nonResident}
-                        members={processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.members, 0)}
-                        revenue={processedData.hierarchyData.existing.nonResident.reduce((s, d) => s + d.revenue, 0)}
-                        level={1}
-                        category="nonResident"
-                        isExpanded={expandedCategories.nonResident}
-                      />
-                    </>
-                  )}
-                  
-                  <HierarchyRow
-                    label="신규"
-                    members={
-                      processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.members, 0) +
-                      processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.members, 0)
-                    }
-                    revenue={
-                      processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.revenue, 0) +
-                      processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.revenue, 0)
-                    }
-                    level={0}
-                    category="new"
-                    isExpanded={expandedCategories.new}
-                  />
-                  {expandedCategories.new && (
-                    <>
-                      <HierarchyRow
-                        label="B2B"
-                        data={processedData.hierarchyData.new.b2b}
-                        members={processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.members, 0)}
-                        revenue={processedData.hierarchyData.new.b2b.reduce((s, d) => s + d.revenue, 0)}
-                        level={1}
-                        category="b2b"
-                        isExpanded={expandedCategories.b2b}
-                      />
-                      <HierarchyRow
-                        label="B2C"
-                        data={processedData.hierarchyData.new.b2c}
-                        members={processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.members, 0)}
-                        revenue={processedData.hierarchyData.new.b2c.reduce((s, d) => s + d.revenue, 0)}
-                        level={1}
-                        category="b2c"
-                        isExpanded={expandedCategories.b2c}
-                      />
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
         {activeTab === 'membership' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">멤버십 판매 현황 (2024년 10월)</h2>
+                <h2 className="text-xl font-bold text-gray-900">멤버십 판매 현황 ({processedData.latestMonth})</h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setMembershipView('byCompany')}
@@ -1463,8 +1483,8 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {[...new Set(membershipData.map(d => d.company))].map((company, compIdx) => {
-                        const companyProducts = membershipData.filter(d => d.company === company);
+                      {[...new Set(membershipData.filter(d => d.month === selectedMonth).map(d => d.company))].map((company, compIdx) => {
+                        const companyProducts = membershipData.filter(d => d.month === selectedMonth && d.company === company);
                         const isExpanded = expandedCompanies[company];
                         const totalCount = companyProducts.reduce((sum, p) => sum + p.count, 0);
                         const totalAmount = companyProducts.reduce((sum, p) => sum + p.amount, 0);
@@ -1505,11 +1525,11 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {['1개월 구독권', '6개월 이용권', '12개월 이용권'].map((product, idx) => {
-                        const productData = membershipData.filter(d => d.product === product);
+                      {[...new Set(membershipData.filter(d => d.month === selectedMonth).map(d => d.product))].map((product, idx) => {
+                        const productData = membershipData.filter(d => d.month === selectedMonth && d.product === product);
                         const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
                         const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
-                        
+
                         return (
                           <tr key={idx} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product}</td>
@@ -1526,92 +1546,107 @@ const Dashboard = () => {
           </div>
         )}
 
-        {activeTab === 'content' && (
+        {activeTab === 'content' && contentOptionsData && (
           <div className="space-y-6">
+            {/* 매출 구성 요약 */}
             <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">콘텐츠 & 옵션 판매 현황 (2024년 10월)</h2>
-              </div>
-              
-              {/* 상품별 요약 카드 */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                {['PT 10회', 'PT 20회', 'PT 30회', '스쿼시', '골프', '1일권'].map((product, idx) => {
-                  const productData = contentData.filter(d => d.product === product);
-                  const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
-                  const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
-                  
-                  if (totalCount === 0) return null;
-                  
+              <h2 className="text-xl font-bold text-gray-900 mb-4">매출 구성 현황 ({processedData.latestMonth})</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {contentOptionsData[selectedMonth] && Object.keys(contentOptionsData[selectedMonth]).map((category, idx) => {
+                  const data = contentOptionsData[selectedMonth][category];
+                  const categoryIcons = {
+                    'PT/개인레슨': '💪',
+                    '그룹레슨': '👥',
+                    '골프': '⛳',
+                    '스쿼시': '🎾',
+                    '기타': '➕'
+                  };
+
                   return (
-                    <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                      <div className="text-sm text-gray-700 font-medium">{product}</div>
-                      <div className="text-2xl font-bold text-gray-900 mt-2">{totalCount}개</div>
-                      <div className="text-sm text-gray-600 mt-1">{formatRevenue(totalAmount)}</div>
+                    <div key={idx} className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-2xl">{categoryIcons[category] || '📦'}</span>
+                        <div className="text-sm font-medium text-gray-700">{category}</div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900">{data.total.count}건</div>
+                      <div className="text-sm text-gray-600 mt-1">{formatRevenue(data.total.amount)}</div>
                     </div>
                   );
                 })}
               </div>
-
-              {/* 상품별 상세 테이블 */}
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 판매수량</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">총 매출</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">평균 단가</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {['PT 10회', 'PT 20회', 'PT 30회', '스쿼시', '골프', '1일권'].map((product, idx) => {
-                      const productData = contentData.filter(d => d.product === product);
-                      const totalCount = productData.reduce((sum, p) => sum + p.count, 0);
-                      const totalAmount = productData.reduce((sum, p) => sum + p.amount, 0);
-                      const avgPrice = totalCount > 0 ? Math.round(totalAmount / totalCount) : 0;
-                      
-                      if (totalCount === 0) return null;
-                      
-                      return (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{totalCount}개</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">{formatRevenue(totalAmount)}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-right">{formatRevenue(avgPrice)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 법인별 구매 내역 (참고용) */}
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">법인별 구매 내역 (상세)</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">법인명</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">수량</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">매출</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {contentData.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.company}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.product}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{item.count}개</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatRevenue(item.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
+
+            {/* 카테고리별 상세 */}
+            {contentOptionsData[selectedMonth] && Object.keys(contentOptionsData[selectedMonth]).map((category, catIdx) => {
+              const categoryData = contentOptionsData[selectedMonth][category];
+
+              return (
+                <div key={catIdx} className="bg-white rounded-lg shadow">
+                  <div className="p-6 border-b border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-900">{category}</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      총 {categoryData.total.count}건, {formatRevenue(categoryData.total.amount)}
+                    </p>
+                  </div>
+
+                  <div className="p-6">
+                    {/* 상품별 판매량 */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">상품별 판매량</h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">상품명</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">판매수량</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">매출</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {Object.entries(categoryData.byProduct)
+                              .sort(([,a], [,b]) => b.count - a.count)
+                              .map(([product, data], idx) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 text-sm text-gray-900">{product}</td>
+                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{data.count}건</td>
+                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatRevenue(data.amount)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* 법인별 구매 현황 */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">법인별 구매 현황</h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">법인명</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">구매건수</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">매출</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {Object.entries(categoryData.byCompany)
+                              .sort(([,a], [,b]) => b.amount - a.amount)
+                              .map(([company, data], idx) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 text-sm text-gray-900">{company}</td>
+                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{data.count}건</td>
+                                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatRevenue(data.amount)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
