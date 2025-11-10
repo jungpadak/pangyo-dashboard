@@ -192,6 +192,7 @@ const Dashboard = () => {
   const [realData, setRealData] = useState(null);
   const [dashboardData, setDashboardData] = useState([]);
   const [segmentData, setSegmentData] = useState(null);
+  const [previousSegmentData, setPreviousSegmentData] = useState(null);
   const [membershipData, setMembershipData] = useState([]);
   const [contentOptionsData, setContentOptionsData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -230,10 +231,16 @@ const Dashboard = () => {
       });
   }, []);
 
-  // selectedMonth가 변경될 때마다 세그먼트 데이터 재조회
+  // selectedMonth가 변경될 때마다 세그먼트 데이터 재조회 (당월 + 전월)
   useEffect(() => {
-    if (!selectedMonth) return;
+    if (!selectedMonth || !dashboardData.length) return;
 
+    // 전월 계산
+    const months = [...new Set(dashboardData.map(d => d.month))].sort();
+    const currentMonthIndex = months.indexOf(selectedMonth);
+    const previousMonth = currentMonthIndex > 0 ? months[currentMonthIndex - 1] : null;
+
+    // 당월 세그먼트 데이터
     fetch(`/api/pangyo-segments?month=${selectedMonth}`)
       .then(res => res.json())
       .then(segmentRes => {
@@ -244,7 +251,23 @@ const Dashboard = () => {
       .catch(error => {
         console.error('세그먼트 데이터 로드 실패:', error);
       });
-  }, [selectedMonth]);
+
+    // 전월 세그먼트 데이터
+    if (previousMonth) {
+      fetch(`/api/pangyo-segments?month=${previousMonth}`)
+        .then(res => res.json())
+        .then(segmentRes => {
+          if (segmentRes.success) {
+            setPreviousSegmentData(segmentRes.data);
+          }
+        })
+        .catch(error => {
+          console.error('전월 세그먼트 데이터 로드 실패:', error);
+        });
+    } else {
+      setPreviousSegmentData(null);
+    }
+  }, [selectedMonth, dashboardData]);
   
   const processedData = useMemo(() => {
     // 로딩 중이거나 데이터가 없으면 null 반환
@@ -266,8 +289,9 @@ const Dashboard = () => {
     const totalMembers = segmentData?.total || 0;
     const totalRevenue = latestData.reduce((sum, d) => sum + d.revenue, 0);
 
-    // 전월 회원 수 및 매출 계산 (dashboardData 기반)
-    const prevTotalMembers = previousData.reduce((sum, d) => sum + d.members, 0);
+    // 전월 회원 수 및 매출 계산
+    // ⚠️ 중요: 전월 회원 수도 previousSegmentData를 사용 (정확한 unique user_id 카운트)
+    const prevTotalMembers = previousSegmentData?.total || 0;
     const prevTotalRevenue = previousData.reduce((sum, d) => sum + d.revenue, 0);
 
     const memberChange = totalMembers - prevTotalMembers;
@@ -386,9 +410,11 @@ const Dashboard = () => {
       availableMonths: months,
       hasDataIssue,
       dataDiscrepancy,
-      dashboardCalculatedMembers
+      dashboardCalculatedMembers,
+      segmentData,
+      previousSegmentData
     };
-  }, [dashboardData, sortConfig, loading, segmentData, selectedMonth]);
+  }, [dashboardData, sortConfig, loading, segmentData, previousSegmentData, selectedMonth]);
 
   const handlePrevMonth = () => {
     if (!processedData) return;
@@ -722,13 +748,16 @@ const Dashboard = () => {
     const hierarchy = processedData.companyHierarchy;
     const rows = [];
 
-    // 기존 카테고리
-    const existingCompanies = [...hierarchy.existing.wemade, ...hierarchy.existing.wemadeOther, ...hierarchy.existing.nonResident];
-    const existingMonthChange = existingCompanies.reduce((sum, c) => sum + c.monthChange, 0);
-    const existingQuarterChange = existingCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
-    const existingTotalMembers = existingCompanies.reduce((sum, c) => sum + c.members, 0);
-    const existingMonthChangePercent = existingTotalMembers > 0 ? (existingMonthChange / (existingTotalMembers - existingMonthChange)) * 100 : 0;
+    // 기존 카테고리 - segmentData 기반으로 정확한 회원 수 계산
+    const existingTotalMembers = processedData.segmentData?.segments?.existing?.count || 0;
+    const prevExistingMembers = processedData.previousSegmentData?.segments?.existing?.count || 0;
+    const existingMonthChange = existingTotalMembers - prevExistingMembers;
+    const existingMonthChangePercent = prevExistingMembers > 0 ? (existingMonthChange / prevExistingMembers) * 100 : 0;
     const existingStatus = existingMonthChange >= 0 ? '🟢' : existingMonthChangePercent < -10 ? '🔴' : '🟡';
+
+    // 3개월 변화는 별도 계산 필요 (현재는 단순화)
+    const existingCompanies = [...hierarchy.existing.wemade, ...hierarchy.existing.wemadeOther, ...hierarchy.existing.nonResident];
+    const existingQuarterChange = existingCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
 
     rows.push(
       <tr key="existing" className="bg-gray-100 hover:bg-gray-200 cursor-pointer font-bold" onClick={() => toggleCompanyCategory('existing')}>
@@ -979,13 +1008,16 @@ const Dashboard = () => {
       }
     }
 
-    // 신규 회원사 카테고리 (하위 계층 없이 단순화)
-    const newCompanies = hierarchy.new;
-    const newMonthChange = newCompanies.reduce((sum, c) => sum + c.monthChange, 0);
-    const newQuarterChange = newCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
-    const newTotalMembers = newCompanies.reduce((sum, c) => sum + c.members, 0);
-    const newMonthChangePercent = newTotalMembers > 0 ? (newMonthChange / (newTotalMembers - newMonthChange)) * 100 : 0;
+    // 신규 회원사 카테고리 - segmentData 기반으로 정확한 회원 수 계산
+    const newTotalMembers = processedData.segmentData?.segments?.new?.count || 0;
+    const prevNewMembers = processedData.previousSegmentData?.segments?.new?.count || 0;
+    const newMonthChange = newTotalMembers - prevNewMembers;
+    const newMonthChangePercent = prevNewMembers > 0 ? (newMonthChange / prevNewMembers) * 100 : 0;
     const newStatus = newMonthChange >= 0 ? '🟢' : newMonthChangePercent < -10 ? '🔴' : '🟡';
+
+    // 3개월 변화는 별도 계산 필요 (현재는 단순화)
+    const newCompanies = hierarchy.new;
+    const newQuarterChange = newCompanies.reduce((sum, c) => sum + c.quarterChange, 0);
 
     rows.push(
       <tr key="new" className="bg-gray-100 hover:bg-gray-200 cursor-pointer font-bold" onClick={() => toggleCompanyCategory('new')}>

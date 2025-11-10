@@ -26,7 +26,7 @@ function SegmentView() {
   const fetchSegmentData = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:3003/api/pangyo-segments?view=${view}`)
+      const response = await fetch(`/api/pangyo-segments?view=${view}`)
       const result = await response.json()
       if (result.success) {
         setSegmentData(result.data)
@@ -46,10 +46,10 @@ function SegmentView() {
       let apiUrl
       if (view === 'all') {
         const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
-        apiUrl = `http://localhost:3003/api/pangyo-all-members?page=${page}${searchParam}`
+        apiUrl = `/api/pangyo-all-members?page=${page}${searchParam}`
       } else {
         const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
-        apiUrl = `http://localhost:3003/api/pangyo-segment-members/${segment}?page=${page}${searchParam}`
+        apiUrl = `/api/pangyo-segment-members/${segment}?page=${page}${searchParam}`
       }
 
       const response = await fetch(apiUrl)
@@ -88,10 +88,10 @@ function SegmentView() {
       let apiUrl
       if (view === 'all') {
         const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
-        apiUrl = `http://localhost:3003/api/pangyo-all-members?page=1&limit=10000${searchParam}`
+        apiUrl = `/api/pangyo-all-members?page=1&limit=10000${searchParam}`
       } else {
         const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
-        apiUrl = `http://localhost:3003/api/pangyo-segment-members/${selectedSegment}?page=1&limit=10000${searchParam}`
+        apiUrl = `/api/pangyo-segment-members/${selectedSegment}?page=1&limit=10000${searchParam}`
       }
 
       const response = await fetch(apiUrl)
