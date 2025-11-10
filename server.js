@@ -470,7 +470,8 @@ app.get('/api/pangyo-segments', async (req, res) => {
     let allMembersQuery, expiredMembersQuery;
 
     if (isOctober2025) {
-      // 10월: 결제일 기준 (오픈월 특성) - 유효 회원
+      // 10월: 멤버십 유효기간 기준 (오픈월 특성 - 9월 말 결제 포함)
+      // 10월 중 어느 시점에라도 유효했던 멤버십을 모두 포함
       allMembersQuery = await pool.query(`
         SELECT DISTINCT ON (m.id)
           m.id,
@@ -480,15 +481,14 @@ app.get('/api/pangyo-segments', async (req, res) => {
         JOIN b_payment_btransaction t ON m.transaction_id = t.id
         JOIN b_payment_border o ON t.order_id = o.id
         LEFT JOIN user_user u ON o.user_id = u.id
-        WHERE m.is_active = true
-          AND t.pay_date >= $1::date
-          AND t.pay_date <= $2::date
+        WHERE m.begin_date <= $2::date
+          AND m.end_date >= $1::date
           AND o.b_place_id = 26
           AND t.is_refund = false
           ${excludeConditions}
       `, [monthStart, monthEnd]);
 
-      // 10월 이전에 만료된 회원 (is_active 조건 제거)
+      // 10월 이전에 만료된 회원
       expiredMembersQuery = await pool.query(`
         SELECT DISTINCT ON (m.id)
           m.id,
@@ -967,36 +967,89 @@ app.get('/api/dashboard-data', async (req, res) => {
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const isCurrentMonth = month === currentMonth;
 
-      // 오픈월 특별 처리: 매출만 결제일 기준, 회원수는 유효회원 기준
-      // 10월, 11월은 오픈월로 결제일 기준으로 매출 계산
-      const isOpenMonth = month === '2025-10' || month === '2025-11';
+      // 오픈월 특별 처리
+      const isOctober2025 = month === '2025-10';
+      const isOpenMonth = month === '2025-11';
 
       // 회원수는 항상 유효회원 기준 (과거는 말일, 당월은 오늘)
       const targetDate = isCurrentMonth
         ? now.toISOString().split('T')[0]
         : monthEnd;
 
-      // 회원수 조회 (유효회원 기준)
-      const membersCountQuery = await pool.query(`
-        SELECT DISTINCT ON (m.id)
-          m.id,
-          u.id as user_id
-        FROM b_class_bmembership m
-        JOIN b_payment_btransaction t ON m.transaction_id = t.id
-        JOIN b_payment_border o ON t.order_id = o.id
-        LEFT JOIN user_user u ON o.user_id = u.id
-        WHERE m.is_active = true
-          AND m.begin_date <= $1::date
-          AND m.end_date >= $1::date
-          AND o.b_place_id = 26
-          AND t.is_refund = false
-          ${excludeConditions}
-      `, [targetDate]);
+      // 회원수 조회
+      let membersCountQuery;
+      if (isOctober2025) {
+        // 10월: 오픈월 특성 - 10월 중 유효했던 모든 멤버십 (9월 말 결제 포함)
+        membersCountQuery = await pool.query(`
+          SELECT DISTINCT ON (m.id)
+            m.id,
+            u.id as user_id
+          FROM b_class_bmembership m
+          JOIN b_payment_btransaction t ON m.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE m.begin_date <= $2::date
+            AND m.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+            ${excludeConditions}
+        `, [monthStart, monthEnd]);
+      } else {
+        // 다른 월: 유효회원 기준
+        membersCountQuery = await pool.query(`
+          SELECT DISTINCT ON (m.id)
+            m.id,
+            u.id as user_id
+          FROM b_class_bmembership m
+          JOIN b_payment_btransaction t ON m.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE m.is_active = true
+            AND m.begin_date <= $1::date
+            AND m.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+            ${excludeConditions}
+        `, [targetDate]);
+      }
 
-      // 매출 조회 (오픈월은 결제일 기준, 다른 월은 유효회원의 매출)
+      // 매출 조회
       let membersRevenueQuery, optionsQuery;
-      if (isOpenMonth) {
-        // 오픈월: 결제일 기준 매출
+      if (isOctober2025) {
+        // 10월: 10월 중 유효했던 멤버십의 매출 (9월 말 결제 포함)
+        membersRevenueQuery = await pool.query(`
+          SELECT DISTINCT ON (m.id)
+            m.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_bmembership m
+          JOIN b_payment_btransaction t ON m.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE m.begin_date <= $2::date
+            AND m.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+            ${excludeConditions}
+        `, [monthStart, monthEnd]);
+
+        // 옵션 상품도 10월 유효기간 기준
+        optionsQuery = await pool.query(`
+          SELECT DISTINCT ON (opt.id)
+            opt.id,
+            u.id as user_id,
+            t.final_price as revenue
+          FROM b_class_boption opt
+          JOIN b_payment_btransaction t ON opt.transaction_id = t.id
+          JOIN b_payment_border o ON t.order_id = o.id
+          LEFT JOIN user_user u ON o.user_id = u.id
+          WHERE opt.begin_date <= $2::date
+            AND opt.end_date >= $1::date
+            AND o.b_place_id = 26
+            AND t.is_refund = false
+        `, [monthStart, monthEnd]);
+      } else if (isOpenMonth) {
+        // 11월 오픈월: 결제일 기준 매출
         membersRevenueQuery = await pool.query(`
           SELECT DISTINCT ON (m.id)
             m.id,
